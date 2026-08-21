@@ -49,13 +49,18 @@ import androidx.compose.material.icons.outlined.CheckCircle
 import androidx.compose.material.icons.outlined.ChevronLeft
 import androidx.compose.material.icons.outlined.ChevronRight
 import androidx.compose.material.icons.outlined.Crop
+import androidx.compose.material.icons.outlined.Edit
 import androidx.compose.material.icons.outlined.FitScreen
 import androidx.compose.material.icons.outlined.FlashAuto
 import androidx.compose.material.icons.outlined.FlashOff
 import androidx.compose.material.icons.outlined.FlashOn
+import androidx.compose.material.icons.outlined.GridOff
+import androidx.compose.material.icons.outlined.GridOn
+import androidx.compose.material.icons.outlined.Lock
 import androidx.compose.material.icons.outlined.MoreVert
 import androidx.compose.material.icons.outlined.NoPhotography
 import androidx.compose.material.icons.outlined.PhotoLibrary
+import androidx.compose.material.icons.outlined.RestartAlt
 import androidx.compose.material.icons.outlined.SaveAlt
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -64,6 +69,7 @@ import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.FilledIconButton
 import androidx.compose.material3.FilledTonalButton
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.IconButtonDefaults
@@ -121,11 +127,17 @@ fun CameraScreen(
     ghostOpacity: Float,
     ghostScaleMode: GhostScaleMode,
     cameraRotationQuarterTurns: Int,
+    bodyGuideMode: BodyGuideMode,
+    bodyGuidePositions: BodyGuidePositions,
     onSelectedIndexChange: (Int) -> Unit,
     onGhostOpacityChange: (Float) -> Unit,
     onGhostOpacityChangeFinished: () -> Unit,
     onGhostScaleModeChange: (GhostScaleMode) -> Unit,
     onRotateCamera: () -> Unit,
+    onBodyGuideModeChange: (BodyGuideMode) -> Unit,
+    onBodyGuidePositionsChange: (BodyGuidePositions) -> Unit,
+    onBodyGuidePositionsChangeFinished: (BodyGuidePositions) -> Unit,
+    onResetBodyGuidePositions: () -> Unit,
     onManageReferences: () -> Unit,
     onAddReferences: () -> Unit,
     onRequestCameraPermission: () -> Unit,
@@ -141,11 +153,17 @@ fun CameraScreen(
         ghostOpacity = ghostOpacity,
         ghostScaleMode = ghostScaleMode,
         cameraRotationQuarterTurns = cameraRotationQuarterTurns,
+        bodyGuideMode = bodyGuideMode,
+        bodyGuidePositions = bodyGuidePositions,
         onSelectedIndexChange = onSelectedIndexChange,
         onGhostOpacityChange = onGhostOpacityChange,
         onGhostOpacityChangeFinished = onGhostOpacityChangeFinished,
         onGhostScaleModeChange = onGhostScaleModeChange,
         onRotateCamera = onRotateCamera,
+        onBodyGuideModeChange = onBodyGuideModeChange,
+        onBodyGuidePositionsChange = onBodyGuidePositionsChange,
+        onBodyGuidePositionsChangeFinished = onBodyGuidePositionsChangeFinished,
+        onResetBodyGuidePositions = onResetBodyGuidePositions,
         onManageReferences = onManageReferences,
         onAddReferences = onAddReferences,
     )
@@ -158,11 +176,17 @@ private fun ActiveCameraScreen(
     ghostOpacity: Float,
     ghostScaleMode: GhostScaleMode,
     cameraRotationQuarterTurns: Int,
+    bodyGuideMode: BodyGuideMode,
+    bodyGuidePositions: BodyGuidePositions,
     onSelectedIndexChange: (Int) -> Unit,
     onGhostOpacityChange: (Float) -> Unit,
     onGhostOpacityChangeFinished: () -> Unit,
     onGhostScaleModeChange: (GhostScaleMode) -> Unit,
     onRotateCamera: () -> Unit,
+    onBodyGuideModeChange: (BodyGuideMode) -> Unit,
+    onBodyGuidePositionsChange: (BodyGuidePositions) -> Unit,
+    onBodyGuidePositionsChangeFinished: (BodyGuidePositions) -> Unit,
+    onResetBodyGuidePositions: () -> Unit,
     onManageReferences: () -> Unit,
     onAddReferences: () -> Unit,
 ) {
@@ -349,6 +373,10 @@ private fun ActiveCameraScreen(
             ghostScaleMode = ghostScaleMode,
             mirrorGhost = useFrontCamera,
             rotationQuarterTurns = cameraRotationQuarterTurns,
+            bodyGuideMode = bodyGuideMode,
+            bodyGuidePositions = bodyGuidePositions,
+            onBodyGuidePositionsChange = onBodyGuidePositionsChange,
+            onBodyGuidePositionsChangeFinished = onBodyGuidePositionsChangeFinished,
             onStreamStateChanged = { streaming ->
                 cameraStreaming = streaming
                 if (streaming) cameraInitializationFailed = false
@@ -361,6 +389,7 @@ private fun ActiveCameraScreen(
             selectedIndex = selectedIndex,
             flashMode = flashMode,
             cameraRotationDegrees = CameraRotation.degrees(cameraRotationQuarterTurns),
+            bodyGuideMode = bodyGuideMode,
             onPreviousReference = { onSelectedIndexChange(selectedIndex - 1) },
             onNextReference = { onSelectedIndexChange(selectedIndex + 1) },
             onManageReferences = onManageReferences,
@@ -373,6 +402,8 @@ private fun ActiveCameraScreen(
                 }
             },
             onRotateCamera = onRotateCamera,
+            onBodyGuideModeChange = onBodyGuideModeChange,
+            onResetBodyGuidePositions = onResetBodyGuidePositions,
             onSwitchCamera = { useFrontCamera = !useFrontCamera },
             modifier = Modifier.align(Alignment.TopCenter),
         )
@@ -413,6 +444,10 @@ private fun CameraStage(
     ghostScaleMode: GhostScaleMode,
     mirrorGhost: Boolean,
     rotationQuarterTurns: Int,
+    bodyGuideMode: BodyGuideMode,
+    bodyGuidePositions: BodyGuidePositions,
+    onBodyGuidePositionsChange: (BodyGuidePositions) -> Unit,
+    onBodyGuidePositionsChangeFinished: (BodyGuidePositions) -> Unit,
     onStreamStateChanged: (Boolean) -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -450,6 +485,13 @@ private fun CameraStage(
                     contentScale = ghostScaleMode.contentScale,
                 )
             }
+            BodyGuideOverlay(
+                mode = bodyGuideMode,
+                positions = bodyGuidePositions,
+                onPositionsChange = onBodyGuidePositionsChange,
+                onPositionsChangeFinished = onBodyGuidePositionsChangeFinished,
+                modifier = Modifier.fillMaxSize(),
+            )
         }
     }
 }
@@ -495,12 +537,15 @@ private fun CameraTopBar(
     selectedIndex: Int,
     flashMode: Int,
     cameraRotationDegrees: Int,
+    bodyGuideMode: BodyGuideMode,
     onPreviousReference: () -> Unit,
     onNextReference: () -> Unit,
     onManageReferences: () -> Unit,
     onAddReferences: () -> Unit,
     onFlashModeChange: () -> Unit,
     onRotateCamera: () -> Unit,
+    onBodyGuideModeChange: (BodyGuideMode) -> Unit,
+    onResetBodyGuidePositions: () -> Unit,
     onSwitchCamera: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -556,6 +601,13 @@ private fun CameraTopBar(
             }
         }
 
+        if (!compactControls) {
+            BodyGuideMenuButton(
+                mode = bodyGuideMode,
+                onModeChange = onBodyGuideModeChange,
+                onResetPositions = onResetBodyGuidePositions,
+            )
+        }
         CameraRotationButton(
             rotationDegrees = cameraRotationDegrees,
             onClick = onRotateCamera,
@@ -563,7 +615,10 @@ private fun CameraTopBar(
         if (compactControls) {
             CompactCameraActions(
                 flashMode = flashMode,
+                bodyGuideMode = bodyGuideMode,
                 onFlashModeChange = onFlashModeChange,
+                onBodyGuideModeChange = onBodyGuideModeChange,
+                onResetBodyGuidePositions = onResetBodyGuidePositions,
                 onSwitchCamera = onSwitchCamera,
             )
         } else {
@@ -606,6 +661,119 @@ private fun CameraRotationButton(
 }
 
 @Composable
+private fun BodyGuideMenuButton(
+    mode: BodyGuideMode,
+    onModeChange: (BodyGuideMode) -> Unit,
+    onResetPositions: () -> Unit,
+) {
+    var expanded by remember { mutableStateOf(false) }
+
+    Box {
+        CameraIconButton(
+            icon = {
+                Icon(
+                    imageVector = when (mode) {
+                        BodyGuideMode.Off -> Icons.Outlined.GridOff
+                        BodyGuideMode.Locked -> Icons.Outlined.GridOn
+                        BodyGuideMode.Editing -> Icons.Outlined.Edit
+                    },
+                    contentDescription = null,
+                    tint = when (mode) {
+                        BodyGuideMode.Off -> SoftWhite
+                        BodyGuideMode.Locked -> GhostTeal
+                        BodyGuideMode.Editing -> CaptureAmber
+                    },
+                )
+            },
+            contentDescription = when (mode) {
+                BodyGuideMode.Off -> "촬영 가이드 메뉴, 꺼짐"
+                BodyGuideMode.Locked -> "촬영 가이드 메뉴, 켜짐"
+                BodyGuideMode.Editing -> "촬영 가이드 메뉴, 위치 조정 중"
+            },
+            onClick = { expanded = true },
+        )
+        DropdownMenu(
+            expanded = expanded,
+            onDismissRequest = { expanded = false },
+        ) {
+            BodyGuideMenuItems(
+                mode = mode,
+                onModeChange = { selectedMode ->
+                    expanded = false
+                    onModeChange(selectedMode)
+                },
+                onResetPositions = {
+                    expanded = false
+                    onResetPositions()
+                },
+            )
+        }
+    }
+}
+
+@Composable
+private fun BodyGuideMenuItems(
+    mode: BodyGuideMode,
+    onModeChange: (BodyGuideMode) -> Unit,
+    onResetPositions: () -> Unit,
+) {
+    val guideEnabled = mode != BodyGuideMode.Off
+    DropdownMenuItem(
+        text = { Text(if (guideEnabled) "촬영 가이드 끄기" else "촬영 가이드 켜기") },
+        leadingIcon = {
+            Icon(
+                imageVector = if (guideEnabled) Icons.Outlined.GridOff else Icons.Outlined.GridOn,
+                contentDescription = null,
+            )
+        },
+        trailingIcon = if (guideEnabled) {
+            { Icon(Icons.Outlined.Check, contentDescription = null, tint = GhostTeal) }
+        } else {
+            null
+        },
+        onClick = {
+            onModeChange(if (guideEnabled) BodyGuideMode.Off else BodyGuideMode.Locked)
+        },
+    )
+
+    if (guideEnabled) {
+        DropdownMenuItem(
+            text = {
+                Text(
+                    if (mode == BodyGuideMode.Editing) "가이드 위치 고정" else "가이드 위치 조정",
+                )
+            },
+            leadingIcon = {
+                Icon(
+                    imageVector = if (mode == BodyGuideMode.Editing) {
+                        Icons.Outlined.Lock
+                    } else {
+                        Icons.Outlined.Edit
+                    },
+                    contentDescription = null,
+                )
+            },
+            onClick = {
+                onModeChange(
+                    if (mode == BodyGuideMode.Editing) {
+                        BodyGuideMode.Locked
+                    } else {
+                        BodyGuideMode.Editing
+                    },
+                )
+            },
+        )
+        DropdownMenuItem(
+            text = { Text("가이드 기본 위치 복원") },
+            leadingIcon = {
+                Icon(Icons.Outlined.RestartAlt, contentDescription = null)
+            },
+            onClick = onResetPositions,
+        )
+    }
+}
+
+@Composable
 private fun FlashButton(
     flashMode: Int,
     onClick: () -> Unit,
@@ -629,7 +797,10 @@ private fun FlashButton(
 @Composable
 private fun CompactCameraActions(
     flashMode: Int,
+    bodyGuideMode: BodyGuideMode,
     onFlashModeChange: () -> Unit,
+    onBodyGuideModeChange: (BodyGuideMode) -> Unit,
+    onResetBodyGuidePositions: () -> Unit,
     onSwitchCamera: () -> Unit,
 ) {
     var expanded by remember { mutableStateOf(false) }
@@ -644,6 +815,18 @@ private fun CompactCameraActions(
             expanded = expanded,
             onDismissRequest = { expanded = false },
         ) {
+            BodyGuideMenuItems(
+                mode = bodyGuideMode,
+                onModeChange = { mode ->
+                    expanded = false
+                    onBodyGuideModeChange(mode)
+                },
+                onResetPositions = {
+                    expanded = false
+                    onResetBodyGuidePositions()
+                },
+            )
+            HorizontalDivider(Modifier.padding(vertical = 4.dp))
             DropdownMenuItem(
                 text = { Text(flashModeLabel(flashMode)) },
                 leadingIcon = {

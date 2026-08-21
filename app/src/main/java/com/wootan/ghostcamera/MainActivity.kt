@@ -27,6 +27,8 @@ import androidx.core.content.ContextCompat
 import com.wootan.ghostcamera.data.ReferencePhoto
 import com.wootan.ghostcamera.data.ReferenceStore
 import com.wootan.ghostcamera.camera.CameraRotation
+import com.wootan.ghostcamera.ui.BodyGuideMode
+import com.wootan.ghostcamera.ui.BodyGuidePositions
 import com.wootan.ghostcamera.ui.CameraScreen
 import com.wootan.ghostcamera.ui.GhostScaleMode
 import com.wootan.ghostcamera.ui.GhostCameraTheme
@@ -34,6 +36,11 @@ import com.wootan.ghostcamera.ui.ReferenceManagerScreen
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+
+private const val BODY_GUIDE_ENABLED_KEY = "body_guide_enabled"
+private const val BODY_GUIDE_SHOULDER_KEY = "body_guide_shoulder"
+private const val BODY_GUIDE_CHEST_KEY = "body_guide_chest"
+private const val BODY_GUIDE_PELVIS_KEY = "body_guide_pelvis"
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -74,6 +81,59 @@ private fun GhostCameraApp() {
         mutableIntStateOf(
             CameraRotation.normalize(preferences.getInt("camera_rotation_quarter_turns", 0)),
         )
+    }
+    val storedBodyGuidePositions = remember(preferences) {
+        BodyGuidePositions.fromStored(
+            shoulder = preferences.getFloat(
+                BODY_GUIDE_SHOULDER_KEY,
+                BodyGuidePositions.Default.shoulder,
+            ),
+            chest = preferences.getFloat(
+                BODY_GUIDE_CHEST_KEY,
+                BodyGuidePositions.Default.chest,
+            ),
+            pelvis = preferences.getFloat(
+                BODY_GUIDE_PELVIS_KEY,
+                BodyGuidePositions.Default.pelvis,
+            ),
+        )
+    }
+    var bodyGuideMode by rememberSaveable {
+        mutableStateOf(
+            if (preferences.getBoolean(BODY_GUIDE_ENABLED_KEY, false)) {
+                BodyGuideMode.Locked
+            } else {
+                BodyGuideMode.Off
+            },
+        )
+    }
+    var bodyGuideShoulder by rememberSaveable {
+        mutableFloatStateOf(storedBodyGuidePositions.shoulder)
+    }
+    var bodyGuideChest by rememberSaveable {
+        mutableFloatStateOf(storedBodyGuidePositions.chest)
+    }
+    var bodyGuidePelvis by rememberSaveable {
+        mutableFloatStateOf(storedBodyGuidePositions.pelvis)
+    }
+    val bodyGuidePositions = BodyGuidePositions.fromStored(
+        shoulder = bodyGuideShoulder,
+        chest = bodyGuideChest,
+        pelvis = bodyGuidePelvis,
+    )
+
+    fun setBodyGuidePositions(positions: BodyGuidePositions) {
+        bodyGuideShoulder = positions.shoulder
+        bodyGuideChest = positions.chest
+        bodyGuidePelvis = positions.pelvis
+    }
+
+    fun persistBodyGuidePositions(positions: BodyGuidePositions) {
+        preferences.edit()
+            .putFloat(BODY_GUIDE_SHOULDER_KEY, positions.shoulder)
+            .putFloat(BODY_GUIDE_CHEST_KEY, positions.chest)
+            .putFloat(BODY_GUIDE_PELVIS_KEY, positions.pelvis)
+            .apply()
     }
 
     var cameraPermissionGranted by remember {
@@ -162,6 +222,8 @@ private fun GhostCameraApp() {
             ghostOpacity = ghostOpacity,
             ghostScaleMode = ghostScaleMode,
             cameraRotationQuarterTurns = cameraRotationQuarterTurns,
+            bodyGuideMode = bodyGuideMode,
+            bodyGuidePositions = bodyGuidePositions,
             onSelectedIndexChange = { selectedIndex = it },
             onGhostOpacityChange = { ghostOpacity = it },
             onGhostOpacityChangeFinished = {
@@ -178,6 +240,21 @@ private fun GhostCameraApp() {
                 preferences.edit()
                     .putInt("camera_rotation_quarter_turns", cameraRotationQuarterTurns)
                     .apply()
+            },
+            onBodyGuideModeChange = { mode ->
+                bodyGuideMode = mode
+                preferences.edit()
+                    .putBoolean(BODY_GUIDE_ENABLED_KEY, mode != BodyGuideMode.Off)
+                    .apply()
+            },
+            onBodyGuidePositionsChange = ::setBodyGuidePositions,
+            onBodyGuidePositionsChangeFinished = { positions ->
+                setBodyGuidePositions(positions)
+                persistBodyGuidePositions(positions)
+            },
+            onResetBodyGuidePositions = {
+                setBodyGuidePositions(BodyGuidePositions.Default)
+                persistBodyGuidePositions(BodyGuidePositions.Default)
             },
             onManageReferences = { showReferenceManager = true },
             onAddReferences = ::openPhotoPicker,
