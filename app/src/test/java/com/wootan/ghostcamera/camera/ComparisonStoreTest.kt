@@ -5,6 +5,26 @@ import org.junit.Test
 
 class ComparisonStoreTest {
     @Test
+    fun `decode bounds swap for odd quarter turns`() {
+        assertEquals(
+            PixelSize(width = 1200, height = 1600),
+            preRotationDecodeBounds(1200, 1600, 0),
+        )
+        assertEquals(
+            PixelSize(width = 1600, height = 1200),
+            preRotationDecodeBounds(1200, 1600, 1),
+        )
+        assertEquals(
+            PixelSize(width = 1200, height = 1600),
+            preRotationDecodeBounds(1200, 1600, 2),
+        )
+        assertEquals(
+            PixelSize(width = 1600, height = 1200),
+            preRotationDecodeBounds(1200, 1600, 3),
+        )
+    }
+
+    @Test
     fun `bounded size preserves aspect ratio without upscaling`() {
         assertEquals(
             PixelSize(width = 1200, height = 1600),

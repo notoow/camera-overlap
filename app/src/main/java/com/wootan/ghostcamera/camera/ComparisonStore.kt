@@ -36,10 +36,19 @@ object ComparisonStore {
         context: Context,
         beforeFile: File,
         afterUri: Uri,
+        beforeRotationQuarterTurns: Int,
     ): Uri {
-        val beforeBitmap = decodeForPanel(context, Uri.fromFile(beforeFile))
+        val beforeBitmap = decodeForPanel(
+            context = context,
+            uri = Uri.fromFile(beforeFile),
+            additionalRotationQuarterTurns = beforeRotationQuarterTurns,
+        )
         try {
-            val afterBitmap = decodeForPanel(context, afterUri)
+            val afterBitmap = decodeForPanel(
+                context = context,
+                uri = afterUri,
+                additionalRotationQuarterTurns = 0,
+            )
             try {
                 val collage = Bitmap.createBitmap(
                     OUTPUT_WIDTH,
@@ -119,15 +128,37 @@ object ComparisonStore {
         canvas.drawText(label, left + 24f, top + 61f, textPaint)
     }
 
-    private fun decodeForPanel(context: Context, uri: Uri): Bitmap =
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
-            decodeWithImageDecoder(context, uri)
+    private fun decodeForPanel(
+        context: Context,
+        uri: Uri,
+        additionalRotationQuarterTurns: Int,
+    ): Bitmap {
+        val normalizedRotation = CameraRotation.normalize(additionalRotationQuarterTurns)
+        val decodeBounds = preRotationDecodeBounds(
+            targetWidth = PANEL_WIDTH,
+            targetHeight = OUTPUT_HEIGHT,
+            rotationQuarterTurns = normalizedRotation,
+        )
+        val decoded = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+            decodeWithImageDecoder(context, uri, decodeBounds.width, decodeBounds.height)
         } else {
-            decodeLegacy(context, uri)
+            decodeLegacy(context, uri, decodeBounds.width, decodeBounds.height)
         }
+        return try {
+            applyQuarterTurn(decoded, normalizedRotation)
+        } catch (error: Throwable) {
+            decoded.recycle()
+            throw error
+        }
+    }
 
     @RequiresApi(Build.VERSION_CODES.P)
-    private fun decodeWithImageDecoder(context: Context, uri: Uri): Bitmap {
+    private fun decodeWithImageDecoder(
+        context: Context,
+        uri: Uri,
+        maxWidth: Int,
+        maxHeight: Int,
+    ): Bitmap {
         val source = if (uri.scheme == ContentResolver.SCHEME_FILE) {
             ImageDecoder.createSource(File(requireNotNull(uri.path)))
         } else {
@@ -138,14 +169,19 @@ object ComparisonStore {
             val target = boundedSize(
                 info.size.width,
                 info.size.height,
-                PANEL_WIDTH,
-                OUTPUT_HEIGHT,
+                maxWidth,
+                maxHeight,
             )
             decoder.setTargetSize(target.width, target.height)
         }
     }
 
-    private fun decodeLegacy(context: Context, uri: Uri): Bitmap {
+    private fun decodeLegacy(
+        context: Context,
+        uri: Uri,
+        maxWidth: Int,
+        maxHeight: Int,
+    ): Bitmap {
         val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
         context.contentResolver.openInputStream(uri)?.use { input ->
             BitmapFactory.decodeStream(input, null, bounds)
@@ -158,8 +194,8 @@ object ComparisonStore {
             inSampleSize = calculateSampleSize(
                 bounds.outWidth,
                 bounds.outHeight,
-                PANEL_WIDTH,
-                OUTPUT_HEIGHT,
+                maxWidth,
+                maxHeight,
             )
         }
         val decoded = context.contentResolver.openInputStream(uri)?.use { input ->
@@ -176,14 +212,33 @@ object ComparisonStore {
         val target = boundedSize(
             oriented.width,
             oriented.height,
-            PANEL_WIDTH,
-            OUTPUT_HEIGHT,
+            maxWidth,
+            maxHeight,
         )
         if (target.width == oriented.width && target.height == oriented.height) return oriented
 
         val scaled = Bitmap.createScaledBitmap(oriented, target.width, target.height, true)
         if (scaled !== oriented) oriented.recycle()
         return scaled
+    }
+
+    private fun applyQuarterTurn(bitmap: Bitmap, quarterTurns: Int): Bitmap {
+        val normalizedRotation = CameraRotation.normalize(quarterTurns)
+        if (normalizedRotation == 0) return bitmap
+
+        val rotated = Bitmap.createBitmap(
+            bitmap,
+            0,
+            0,
+            bitmap.width,
+            bitmap.height,
+            Matrix().apply {
+                setRotate(CameraRotation.degrees(normalizedRotation).toFloat())
+            },
+            true,
+        )
+        if (rotated !== bitmap) bitmap.recycle()
+        return rotated
     }
 
     private fun applyExifOrientation(bitmap: Bitmap, orientation: Int): Bitmap {
@@ -326,6 +381,19 @@ internal data class PixelRect(
     val right: Int,
     val bottom: Int,
 )
+
+internal fun preRotationDecodeBounds(
+    targetWidth: Int,
+    targetHeight: Int,
+    rotationQuarterTurns: Int,
+): PixelSize {
+    require(targetWidth > 0 && targetHeight > 0)
+    return if (CameraRotation.normalize(rotationQuarterTurns) % 2 == 1) {
+        PixelSize(width = targetHeight, height = targetWidth)
+    } else {
+        PixelSize(width = targetWidth, height = targetHeight)
+    }
+}
 
 internal fun boundedSize(
     sourceWidth: Int,

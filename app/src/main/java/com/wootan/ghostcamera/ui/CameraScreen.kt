@@ -188,6 +188,7 @@ private fun ActiveCameraScreen(
     var captureFlashVisible by remember { mutableStateOf(false) }
     var lastCaptureUriValue by rememberSaveable { mutableStateOf<String?>(null) }
     var lastCaptureReferenceId by rememberSaveable { mutableStateOf<String?>(null) }
+    var lastCaptureReferenceRotationQuarterTurns by rememberSaveable { mutableIntStateOf(0) }
     var showLastCapture by rememberSaveable { mutableStateOf(false) }
     val cameraReady = cameraInitialized && cameraStreaming && !cameraInitializationFailed
 
@@ -292,6 +293,8 @@ private fun ActiveCameraScreen(
                             }
                             lastCaptureUriValue = savedUri?.toString()
                             lastCaptureReferenceId = captureReference?.id
+                            lastCaptureReferenceRotationQuarterTurns =
+                                captureRotationQuarterTurns
                             captureRunning = false
                             captureFlashVisible = true
                             delay(90)
@@ -327,6 +330,7 @@ private fun ActiveCameraScreen(
         LastCapturePreview(
             uri = lastCaptureUri,
             reference = lastCaptureReference,
+            referenceRotationQuarterTurns = lastCaptureReferenceRotationQuarterTurns,
             onClose = { showLastCapture = false },
         )
         return
@@ -337,8 +341,13 @@ private fun ActiveCameraScreen(
             .fillMaxSize()
             .background(Color.Black),
     ) {
-        CameraPreview(
+        CameraStage(
             controller = controller,
+            reference = currentReference,
+            referenceNumber = selectedIndex + 1,
+            ghostOpacity = ghostOpacity,
+            ghostScaleMode = ghostScaleMode,
+            mirrorGhost = useFrontCamera,
             rotationQuarterTurns = cameraRotationQuarterTurns,
             onStreamStateChanged = { streaming ->
                 cameraStreaming = streaming
@@ -346,20 +355,6 @@ private fun ActiveCameraScreen(
             },
             modifier = Modifier.fillMaxSize(),
         )
-
-        currentReference?.let { reference ->
-            AsyncImage(
-                model = reference.file,
-                contentDescription = "${selectedIndex + 1} 번 고스트",
-                modifier = Modifier
-                    .fillMaxSize()
-                    .graphicsLayer {
-                        alpha = ghostOpacity
-                        scaleX = if (useFrontCamera) -1f else 1f
-                    },
-                contentScale = ghostScaleMode.contentScale,
-            )
-        }
 
         CameraTopBar(
             referenceCount = references.size,
@@ -410,15 +405,63 @@ private fun ActiveCameraScreen(
 }
 
 @Composable
+private fun CameraStage(
+    controller: LifecycleCameraController,
+    reference: ReferencePhoto?,
+    referenceNumber: Int,
+    ghostOpacity: Float,
+    ghostScaleMode: GhostScaleMode,
+    mirrorGhost: Boolean,
+    rotationQuarterTurns: Int,
+    onStreamStateChanged: (Boolean) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val normalizedRotation = CameraRotation.normalize(rotationQuarterTurns)
+    BoxWithConstraints(
+        modifier = modifier.clipToBounds(),
+        contentAlignment = Alignment.Center,
+    ) {
+        val stageModifier = if (normalizedRotation % 2 == 1) {
+            Modifier.requiredSize(width = maxHeight, height = maxWidth)
+        } else {
+            Modifier.fillMaxSize()
+        }
+
+        Box(
+            modifier = stageModifier.graphicsLayer {
+                rotationZ = CameraRotation.degrees(normalizedRotation).toFloat()
+            },
+        ) {
+            CameraPreview(
+                controller = controller,
+                onStreamStateChanged = onStreamStateChanged,
+                modifier = Modifier.fillMaxSize(),
+            )
+            reference?.let {
+                AsyncImage(
+                    model = it.file,
+                    contentDescription = "$referenceNumber 번 고스트",
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .graphicsLayer {
+                            alpha = ghostOpacity
+                            scaleX = if (mirrorGhost) -1f else 1f
+                        },
+                    contentScale = ghostScaleMode.contentScale,
+                )
+            }
+        }
+    }
+}
+
+@Composable
 private fun CameraPreview(
     controller: LifecycleCameraController,
-    rotationQuarterTurns: Int,
     onStreamStateChanged: (Boolean) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
-    val normalizedRotation = CameraRotation.normalize(rotationQuarterTurns)
     val previewView = remember(context, controller) {
         PreviewView(context).apply {
             scaleType = PreviewView.ScaleType.FILL_CENTER
@@ -439,24 +482,11 @@ private fun CameraPreview(
         }
     }
 
-    BoxWithConstraints(
-        modifier = modifier.clipToBounds(),
-        contentAlignment = Alignment.Center,
-    ) {
-        val previewModifier = if (normalizedRotation % 2 == 1) {
-            Modifier.requiredSize(width = maxHeight, height = maxWidth)
-        } else {
-            Modifier.fillMaxSize()
-        }
-
-        AndroidView(
-            factory = { previewView },
-            update = { it.controller = controller },
-            modifier = previewModifier.graphicsLayer {
-                rotationZ = CameraRotation.degrees(normalizedRotation).toFloat()
-            },
-        )
-    }
+    AndroidView(
+        factory = { previewView },
+        update = { it.controller = controller },
+        modifier = modifier,
+    )
 }
 
 @Composable
@@ -932,12 +962,14 @@ private fun CameraIconButton(
 private fun LastCapturePreview(
     uri: Uri,
     reference: ReferencePhoto?,
+    referenceRotationQuarterTurns: Int,
     onClose: () -> Unit,
 ) {
     if (reference != null) {
         BeforeAfterPreview(
             reference = reference,
             afterUri = uri,
+            referenceRotationQuarterTurns = referenceRotationQuarterTurns,
             onClose = onClose,
         )
     } else {
@@ -949,6 +981,7 @@ private fun LastCapturePreview(
 private fun BeforeAfterPreview(
     reference: ReferencePhoto,
     afterUri: Uri,
+    referenceRotationQuarterTurns: Int,
     onClose: () -> Unit,
 ) {
     val context = LocalContext.current
@@ -962,7 +995,12 @@ private fun BeforeAfterPreview(
         scope.launch {
             val result = runCatching {
                 withContext(Dispatchers.IO) {
-                    ComparisonStore.save(context, reference.file, afterUri)
+                    ComparisonStore.save(
+                        context = context,
+                        beforeFile = reference.file,
+                        afterUri = afterUri,
+                        beforeRotationQuarterTurns = referenceRotationQuarterTurns,
+                    )
                 }
             }
             saveRunning = false
@@ -1058,6 +1096,7 @@ private fun BeforeAfterPreview(
                 label = "BEFORE",
                 model = reference.file,
                 contentDescription = "기준 사진",
+                rotationQuarterTurns = referenceRotationQuarterTurns,
                 modifier = Modifier
                     .weight(1f)
                     .fillMaxHeight(),
@@ -1072,6 +1111,7 @@ private fun BeforeAfterPreview(
                 label = "AFTER",
                 model = afterUri,
                 contentDescription = "촬영 사진",
+                rotationQuarterTurns = 0,
                 modifier = Modifier
                     .weight(1f)
                     .fillMaxHeight(),
@@ -1085,16 +1125,17 @@ private fun ComparisonPane(
     label: String,
     model: Any,
     contentDescription: String,
+    rotationQuarterTurns: Int,
     modifier: Modifier = Modifier,
 ) {
     Box(
         modifier = modifier.background(Color.Black),
     ) {
-        AsyncImage(
+        RotatedFitImage(
             model = model,
             contentDescription = contentDescription,
+            rotationQuarterTurns = rotationQuarterTurns,
             modifier = Modifier.fillMaxSize(),
-            contentScale = ContentScale.Fit,
         )
         Surface(
             modifier = Modifier
@@ -1110,6 +1151,34 @@ private fun ComparisonPane(
                 fontSize = 12.sp,
             )
         }
+    }
+}
+
+@Composable
+private fun RotatedFitImage(
+    model: Any,
+    contentDescription: String,
+    rotationQuarterTurns: Int,
+    modifier: Modifier = Modifier,
+) {
+    val normalizedRotation = CameraRotation.normalize(rotationQuarterTurns)
+    BoxWithConstraints(
+        modifier = modifier.clipToBounds(),
+        contentAlignment = Alignment.Center,
+    ) {
+        val imageModifier = if (normalizedRotation % 2 == 1) {
+            Modifier.requiredSize(width = maxHeight, height = maxWidth)
+        } else {
+            Modifier.fillMaxSize()
+        }
+        AsyncImage(
+            model = model,
+            contentDescription = contentDescription,
+            modifier = imageModifier.graphicsLayer {
+                rotationZ = CameraRotation.degrees(normalizedRotation).toFloat()
+            },
+            contentScale = ContentScale.Fit,
+        )
     }
 }
 
