@@ -23,6 +23,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -53,7 +54,9 @@ import androidx.compose.material.icons.outlined.FlashAuto
 import androidx.compose.material.icons.outlined.FlashOff
 import androidx.compose.material.icons.outlined.FlashOn
 import androidx.compose.material.icons.outlined.MoreVert
+import androidx.compose.material.icons.outlined.NoPhotography
 import androidx.compose.material.icons.outlined.PhotoLibrary
+import androidx.compose.material.icons.outlined.SaveAlt
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
@@ -96,10 +99,12 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
+import androidx.lifecycle.Observer
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import coil.compose.AsyncImage
 import com.wootan.ghostcamera.camera.CameraRotation
 import com.wootan.ghostcamera.camera.CaptureStore
+import com.wootan.ghostcamera.camera.ComparisonStore
 import com.wootan.ghostcamera.data.ReferencePhoto
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.Dispatchers
@@ -176,14 +181,56 @@ private fun ActiveCameraScreen(
 
     var useFrontCamera by rememberSaveable { mutableStateOf(false) }
     var flashMode by rememberSaveable { mutableIntStateOf(ImageCapture.FLASH_MODE_OFF) }
+    var cameraInitialized by remember { mutableStateOf(false) }
+    var cameraStreaming by remember { mutableStateOf(false) }
+    var cameraInitializationFailed by remember { mutableStateOf(false) }
     var captureRunning by remember { mutableStateOf(false) }
     var captureFlashVisible by remember { mutableStateOf(false) }
-    var lastCaptureUri by remember { mutableStateOf<Uri?>(null) }
+    var lastCaptureUriValue by rememberSaveable { mutableStateOf<String?>(null) }
+    var lastCaptureReferenceId by rememberSaveable { mutableStateOf<String?>(null) }
     var showLastCapture by rememberSaveable { mutableStateOf(false) }
+    val cameraReady = cameraInitialized && cameraStreaming && !cameraInitializationFailed
 
     DisposableEffect(controller, lifecycleOwner) {
-        controller.bindToLifecycle(lifecycleOwner)
-        onDispose { controller.unbind() }
+        var active = true
+        var lifecycleBound = false
+        val initializationFuture = controller.initializationFuture
+
+        runCatching {
+            controller.bindToLifecycle(lifecycleOwner)
+            lifecycleBound = true
+        }.onFailure {
+            cameraInitializationFailed = true
+            Toast.makeText(context, "카메라를 시작하지 못했습니다", Toast.LENGTH_LONG).show()
+        }
+
+        initializationFuture.addListener(
+            {
+                if (active) {
+                    runCatching { initializationFuture.get() }
+                        .onSuccess {
+                            cameraInitialized = true
+                            cameraInitializationFailed =
+                                !lifecycleBound || controller.cameraInfo == null
+                        }
+                        .onFailure {
+                            cameraInitialized = false
+                            cameraInitializationFailed = true
+                            Toast.makeText(
+                                context,
+                                "카메라를 사용할 수 없습니다. 앱을 다시 실행해 주세요",
+                                Toast.LENGTH_LONG,
+                            ).show()
+                        }
+                }
+            },
+            ContextCompat.getMainExecutor(context),
+        )
+
+        onDispose {
+            active = false
+            controller.unbind()
+        }
     }
 
     LaunchedEffect(useFrontCamera) {
@@ -207,51 +254,82 @@ private fun ActiveCameraScreen(
     }
 
     val currentReference = references.getOrNull(selectedIndex)
+    val lastCaptureUri = lastCaptureUriValue?.let(Uri::parse)
+    val lastCaptureReference = lastCaptureReferenceId?.let { referenceId ->
+        references.firstOrNull { it.id == referenceId }
+    }
 
     fun capturePhoto() {
         if (captureRunning) return
+        if (!cameraReady) {
+            Toast.makeText(context, "카메라를 준비하고 있습니다", Toast.LENGTH_SHORT).show()
+            return
+        }
         captureRunning = true
         val captureRotationQuarterTurns = cameraRotationQuarterTurns
+        val captureReference = currentReference
         val target = CaptureStore.createTarget(context)
-        controller.takePicture(
-            target.options,
-            ContextCompat.getMainExecutor(context),
-            object : ImageCapture.OnImageSavedCallback {
-                override fun onImageSaved(outputFileResults: ImageCapture.OutputFileResults) {
-                    val savedUri = CaptureStore.resolveSavedUri(
-                        context,
-                        outputFileResults,
-                        target,
-                    )
-                    scope.launch {
-                        savedUri?.let { uri ->
-                            withContext(Dispatchers.IO) {
-                                CaptureStore.applyAdditionalRotation(
-                                    context,
-                                    uri,
-                                    captureRotationQuarterTurns,
-                                )
+        runCatching {
+            controller.takePicture(
+                target.options,
+                ContextCompat.getMainExecutor(context),
+                object : ImageCapture.OnImageSavedCallback {
+                    override fun onImageSaved(outputFileResults: ImageCapture.OutputFileResults) {
+                        val savedUri = CaptureStore.resolveSavedUri(
+                            context,
+                            outputFileResults,
+                            target,
+                        )
+                        scope.launch {
+                            savedUri?.let { uri ->
+                                withContext(Dispatchers.IO) {
+                                    CaptureStore.applyAdditionalRotation(
+                                        context,
+                                        uri,
+                                        captureRotationQuarterTurns,
+                                    )
+                                }
                             }
+                            lastCaptureUriValue = savedUri?.toString()
+                            lastCaptureReferenceId = captureReference?.id
+                            captureRunning = false
+                            captureFlashVisible = true
+                            delay(90)
+                            captureFlashVisible = false
+                            showLastCapture = savedUri != null && captureReference != null
+                            Toast.makeText(context, "갤러리에 저장했습니다", Toast.LENGTH_SHORT)
+                                .show()
                         }
-                        lastCaptureUri = savedUri
-                        captureRunning = false
-                        captureFlashVisible = true
-                        delay(90)
-                        captureFlashVisible = false
-                        Toast.makeText(context, "갤러리에 저장했습니다", Toast.LENGTH_SHORT).show()
                     }
-                }
 
-                override fun onError(exception: ImageCaptureException) {
-                    captureRunning = false
-                    Toast.makeText(
-                        context,
-                        "촬영하지 못했습니다. 다시 시도해 주세요",
-                        Toast.LENGTH_SHORT,
-                    ).show()
-                }
-            },
+                    override fun onError(exception: ImageCaptureException) {
+                        captureRunning = false
+                        Toast.makeText(
+                            context,
+                            "촬영하지 못했습니다. 다시 시도해 주세요",
+                            Toast.LENGTH_SHORT,
+                        ).show()
+                    }
+                },
+            )
+        }.onFailure {
+            captureRunning = false
+            Toast.makeText(
+                context,
+                "카메라가 아직 준비되지 않았습니다. 잠시 후 다시 시도해 주세요",
+                Toast.LENGTH_SHORT,
+            ).show()
+        }
+    }
+
+    if (showLastCapture && lastCaptureUri != null) {
+        BackHandler { showLastCapture = false }
+        LastCapturePreview(
+            uri = lastCaptureUri,
+            reference = lastCaptureReference,
+            onClose = { showLastCapture = false },
         )
+        return
     }
 
     Box(
@@ -262,6 +340,10 @@ private fun ActiveCameraScreen(
         CameraPreview(
             controller = controller,
             rotationQuarterTurns = cameraRotationQuarterTurns,
+            onStreamStateChanged = { streaming ->
+                cameraStreaming = streaming
+                if (streaming) cameraInitializationFailed = false
+            },
             modifier = Modifier.fillMaxSize(),
         )
 
@@ -304,6 +386,8 @@ private fun ActiveCameraScreen(
             hasReference = currentReference != null,
             ghostOpacity = ghostOpacity,
             ghostScaleMode = ghostScaleMode,
+            cameraReady = cameraReady,
+            cameraInitializationFailed = cameraInitializationFailed,
             captureRunning = captureRunning,
             lastCaptureUri = lastCaptureUri,
             onGhostOpacityChange = onGhostOpacityChange,
@@ -322,13 +406,6 @@ private fun ActiveCameraScreen(
             )
         }
 
-        if (showLastCapture && lastCaptureUri != null) {
-            BackHandler { showLastCapture = false }
-            LastCapturePreview(
-                uri = lastCaptureUri!!,
-                onClose = { showLastCapture = false },
-            )
-        }
     }
 }
 
@@ -336,9 +413,32 @@ private fun ActiveCameraScreen(
 private fun CameraPreview(
     controller: LifecycleCameraController,
     rotationQuarterTurns: Int,
+    onStreamStateChanged: (Boolean) -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    val context = LocalContext.current
+    val lifecycleOwner = LocalLifecycleOwner.current
     val normalizedRotation = CameraRotation.normalize(rotationQuarterTurns)
+    val previewView = remember(context, controller) {
+        PreviewView(context).apply {
+            scaleType = PreviewView.ScaleType.FILL_CENTER
+            implementationMode = PreviewView.ImplementationMode.COMPATIBLE
+            this.controller = controller
+        }
+    }
+
+    DisposableEffect(previewView, lifecycleOwner) {
+        val observer = Observer<PreviewView.StreamState> { streamState ->
+            onStreamStateChanged(streamState == PreviewView.StreamState.STREAMING)
+        }
+        previewView.previewStreamState.observe(lifecycleOwner, observer)
+        onDispose {
+            previewView.previewStreamState.removeObserver(observer)
+            previewView.controller = null
+            onStreamStateChanged(false)
+        }
+    }
+
     BoxWithConstraints(
         modifier = modifier.clipToBounds(),
         contentAlignment = Alignment.Center,
@@ -350,14 +450,8 @@ private fun CameraPreview(
         }
 
         AndroidView(
-            factory = { context ->
-                PreviewView(context).apply {
-                    scaleType = PreviewView.ScaleType.FILL_CENTER
-                    implementationMode = PreviewView.ImplementationMode.COMPATIBLE
-                    this.controller = controller
-                }
-            },
-            update = { previewView -> previewView.controller = controller },
+            factory = { previewView },
+            update = { it.controller = controller },
             modifier = previewModifier.graphicsLayer {
                 rotationZ = CameraRotation.degrees(normalizedRotation).toFloat()
             },
@@ -618,6 +712,8 @@ private fun CameraBottomBar(
     hasReference: Boolean,
     ghostOpacity: Float,
     ghostScaleMode: GhostScaleMode,
+    cameraReady: Boolean,
+    cameraInitializationFailed: Boolean,
     captureRunning: Boolean,
     lastCaptureUri: Uri?,
     onGhostOpacityChange: (Float) -> Unit,
@@ -696,6 +792,8 @@ private fun CameraBottomBar(
             }
 
             ShutterButton(
+                cameraReady = cameraReady,
+                cameraInitializationFailed = cameraInitializationFailed,
                 captureRunning = captureRunning,
                 onClick = onCapture,
             )
@@ -760,27 +858,47 @@ private fun ghostScaleIcon(mode: GhostScaleMode) = when (mode) {
 
 @Composable
 private fun ShutterButton(
+    cameraReady: Boolean,
+    cameraInitializationFailed: Boolean,
     captureRunning: Boolean,
     onClick: () -> Unit,
 ) {
+    val shutterEnabled = cameraReady && !captureRunning
     Box(
         modifier = Modifier
             .size(82.dp)
             .semantics {
-                contentDescription = "사진 촬영"
+                contentDescription = when {
+                    cameraInitializationFailed -> "카메라를 사용할 수 없음"
+                    !cameraReady -> "카메라 준비 중"
+                    else -> "사진 촬영"
+                }
                 role = Role.Button
             }
             .clickable(
-                enabled = !captureRunning,
+                enabled = shutterEnabled,
                 role = Role.Button,
                 onClick = onClick,
             )
-            .background(Color.White, CircleShape)
+            .background(
+                color = Color.White.copy(alpha = if (cameraReady) 1f else 0.58f),
+                shape = CircleShape,
+            )
             .padding(6.dp)
-            .background(CaptureAmber, CircleShape),
+            .background(
+                color = CaptureAmber.copy(alpha = if (cameraReady) 1f else 0.58f),
+                shape = CircleShape,
+            ),
         contentAlignment = Alignment.Center,
     ) {
-        if (captureRunning) {
+        if (cameraInitializationFailed) {
+            Icon(
+                imageVector = Icons.Outlined.NoPhotography,
+                contentDescription = null,
+                modifier = Modifier.size(30.dp),
+                tint = Color(0xFF2A1A00),
+            )
+        } else if (captureRunning || !cameraReady) {
             CircularProgressIndicator(
                 modifier = Modifier.size(30.dp),
                 color = Color(0xFF2A1A00),
@@ -813,6 +931,191 @@ private fun CameraIconButton(
 @Composable
 private fun LastCapturePreview(
     uri: Uri,
+    reference: ReferencePhoto?,
+    onClose: () -> Unit,
+) {
+    if (reference != null) {
+        BeforeAfterPreview(
+            reference = reference,
+            afterUri = uri,
+            onClose = onClose,
+        )
+    } else {
+        SingleCapturePreview(uri = uri, onClose = onClose)
+    }
+}
+
+@Composable
+private fun BeforeAfterPreview(
+    reference: ReferencePhoto,
+    afterUri: Uri,
+    onClose: () -> Unit,
+) {
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    var saveRunning by remember { mutableStateOf(false) }
+    var comparisonSaved by rememberSaveable(afterUri.toString()) { mutableStateOf(false) }
+
+    fun saveComparison() {
+        if (saveRunning || comparisonSaved) return
+        saveRunning = true
+        scope.launch {
+            val result = runCatching {
+                withContext(Dispatchers.IO) {
+                    ComparisonStore.save(context, reference.file, afterUri)
+                }
+            }
+            saveRunning = false
+            if (result.isSuccess) {
+                comparisonSaved = true
+                Toast.makeText(
+                    context,
+                    "B/A 콜라주를 갤러리에 저장했습니다",
+                    Toast.LENGTH_SHORT,
+                ).show()
+            } else {
+                Toast.makeText(
+                    context,
+                    "B/A 콜라주를 저장하지 못했습니다",
+                    Toast.LENGTH_SHORT,
+                ).show()
+            }
+        }
+    }
+
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(Color.Black),
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .background(Color(0xFF111719))
+                .windowInsetsPadding(
+                    WindowInsets.safeDrawing.only(
+                        WindowInsetsSides.Top + WindowInsetsSides.Horizontal,
+                    ),
+                )
+                .padding(top = 8.dp, start = 8.dp, end = 8.dp, bottom = 10.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            IconButton(onClick = onClose) {
+                Icon(
+                    Icons.AutoMirrored.Outlined.ArrowBack,
+                    contentDescription = "카메라로 돌아가기",
+                    tint = SoftWhite,
+                )
+            }
+            Text(
+                text = "촬영 비교",
+                modifier = Modifier.weight(1f),
+                style = MaterialTheme.typography.titleMedium,
+                color = SoftWhite,
+            )
+            IconButton(
+                onClick = ::saveComparison,
+                enabled = !saveRunning && !comparisonSaved,
+                modifier = Modifier.semantics {
+                    contentDescription = if (comparisonSaved) {
+                        "B/A 콜라주 저장됨"
+                    } else {
+                        "B/A 콜라주 저장"
+                    }
+                },
+            ) {
+                when {
+                    saveRunning -> CircularProgressIndicator(
+                        modifier = Modifier.size(24.dp),
+                        color = GhostTeal,
+                        strokeWidth = 2.5.dp,
+                    )
+                    comparisonSaved -> Icon(
+                        Icons.Outlined.CheckCircle,
+                        contentDescription = null,
+                        tint = GhostTeal,
+                    )
+                    else -> Icon(
+                        Icons.Outlined.SaveAlt,
+                        contentDescription = null,
+                        tint = SoftWhite,
+                    )
+                }
+            }
+        }
+
+        Row(
+            modifier = Modifier
+                .weight(1f)
+                .fillMaxWidth()
+                .windowInsetsPadding(
+                    WindowInsets.safeDrawing.only(
+                        WindowInsetsSides.Bottom + WindowInsetsSides.Horizontal,
+                    ),
+                ),
+        ) {
+            ComparisonPane(
+                label = "BEFORE",
+                model = reference.file,
+                contentDescription = "기준 사진",
+                modifier = Modifier
+                    .weight(1f)
+                    .fillMaxHeight(),
+            )
+            Spacer(
+                modifier = Modifier
+                    .fillMaxHeight()
+                    .width(2.dp)
+                    .background(Color.White),
+            )
+            ComparisonPane(
+                label = "AFTER",
+                model = afterUri,
+                contentDescription = "촬영 사진",
+                modifier = Modifier
+                    .weight(1f)
+                    .fillMaxHeight(),
+            )
+        }
+    }
+}
+
+@Composable
+private fun ComparisonPane(
+    label: String,
+    model: Any,
+    contentDescription: String,
+    modifier: Modifier = Modifier,
+) {
+    Box(
+        modifier = modifier.background(Color.Black),
+    ) {
+        AsyncImage(
+            model = model,
+            contentDescription = contentDescription,
+            modifier = Modifier.fillMaxSize(),
+            contentScale = ContentScale.Fit,
+        )
+        Surface(
+            modifier = Modifier
+                .align(Alignment.TopStart)
+                .padding(10.dp),
+            shape = RoundedCornerShape(4.dp),
+            color = Color(0xCC000000),
+            contentColor = Color.White,
+        ) {
+            Text(
+                text = label,
+                modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                fontSize = 12.sp,
+            )
+        }
+    }
+}
+
+@Composable
+private fun SingleCapturePreview(
+    uri: Uri,
     onClose: () -> Unit,
 ) {
     Box(
@@ -839,12 +1142,17 @@ private fun LastCapturePreview(
             verticalAlignment = Alignment.CenterVertically,
         ) {
             IconButton(onClick = onClose) {
-                Icon(Icons.AutoMirrored.Outlined.ArrowBack, "카메라로 돌아가기")
+                Icon(
+                    Icons.AutoMirrored.Outlined.ArrowBack,
+                    contentDescription = "카메라로 돌아가기",
+                    tint = SoftWhite,
+                )
             }
             Text(
                 text = "최근 촬영",
                 modifier = Modifier.weight(1f),
                 style = MaterialTheme.typography.titleMedium,
+                color = SoftWhite,
             )
             Icon(
                 Icons.Outlined.CheckCircle,
@@ -852,7 +1160,7 @@ private fun LastCapturePreview(
                 tint = GhostTeal,
             )
             Spacer(Modifier.width(8.dp))
-            Text("갤러리에 저장됨", fontSize = 13.sp)
+            Text("갤러리에 저장됨", fontSize = 13.sp, color = SoftWhite)
         }
     }
 }

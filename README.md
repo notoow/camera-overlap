@@ -15,6 +15,8 @@
 - 플래시 끔/자동/켬
 - 핀치 줌과 탭 포커스
 - 촬영 사진을 `Pictures/GhostCamera` 앨범에 저장
+- 기준 사진이 있으면 촬영 직후 `BEFORE / AFTER` 비교 화면 표시
+- 비교 화면에서 필요할 때만 `2400 x 1600` B/A 콜라주 저장
 - 고스트 투명도·비율과 카메라 회전값을 다음 실행에도 유지
 
 고스트 사진은 촬영 구도를 맞추는 용도로만 화면에 표시되며 저장되는 사진에는 포함되지 않습니다. 앱은 인터넷 권한을 요청하지 않습니다.
@@ -37,7 +39,7 @@
 | 대형 태블릿 `1600 x 2560` | 확인 | `2560 x 1600` 확인 |
 | 휴대폰 `1080 x 2400` | 확인 | `2400 x 1080` 확인 |
 
-에뮬레이터에서는 Logitech BRIO 웹캠으로 전체 화면 프리뷰, 기준 사진 5장 탐색, 투명도·비율·수동 회전 변경 및 재실행 후 유지, 촬영 파일의 `Pictures/GhostCamera` 저장과 회전 메타데이터까지 확인했습니다. 삼성 카메라 HAL과 One UI 차이는 실제 Galaxy 하드웨어인 [Samsung Remote Test Lab](https://developer.samsung.com/remote-test-lab) 또는 실기기에서 최종 확인해야 합니다.
+에뮬레이터에서는 Logitech BRIO 웹캠으로 전체 화면 프리뷰, 기준 사진 5장 탐색, 투명도·비율·수동 회전 변경 및 재실행 후 유지, 촬영 파일의 `Pictures/GhostCamera` 저장과 회전 메타데이터를 확인했습니다. 촬영 직후 B/A 비교, 화면 회전 후 촬영 쌍 유지, `2400 x 1600` 콜라주 생성도 검증했습니다. 삼성 카메라 HAL과 One UI 차이는 실제 Galaxy 하드웨어인 [Samsung Remote Test Lab](https://developer.samsung.com/remote-test-lab) 또는 실기기에서 최종 확인해야 합니다.
 
 ## 빌드
 
