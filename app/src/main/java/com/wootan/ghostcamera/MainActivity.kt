@@ -3,8 +3,10 @@ package com.wootan.ghostcamera
 import android.Manifest
 import android.content.Context
 import android.content.pm.PackageManager
+import android.graphics.Color
 import android.os.Bundle
 import androidx.activity.ComponentActivity
+import androidx.activity.SystemBarStyle
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
@@ -24,7 +26,9 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.core.content.ContextCompat
 import com.wootan.ghostcamera.data.ReferencePhoto
 import com.wootan.ghostcamera.data.ReferenceStore
+import com.wootan.ghostcamera.camera.CameraRotation
 import com.wootan.ghostcamera.ui.CameraScreen
+import com.wootan.ghostcamera.ui.GhostScaleMode
 import com.wootan.ghostcamera.ui.GhostCameraTheme
 import com.wootan.ghostcamera.ui.ReferenceManagerScreen
 import kotlinx.coroutines.Dispatchers
@@ -34,7 +38,9 @@ import kotlinx.coroutines.withContext
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        enableEdgeToEdge()
+        enableEdgeToEdge(
+            statusBarStyle = SystemBarStyle.dark(Color.TRANSPARENT),
+        )
         setContent {
             GhostCameraTheme {
                 GhostCameraApp()
@@ -58,6 +64,16 @@ private fun GhostCameraApp() {
     var referenceOperationRunning by remember { mutableStateOf(false) }
     var ghostOpacity by rememberSaveable {
         mutableFloatStateOf(preferences.getFloat("ghost_opacity", 0.45f))
+    }
+    var ghostScaleMode by rememberSaveable {
+        mutableStateOf(
+            GhostScaleMode.fromPreference(preferences.getString("ghost_scale_mode", null)),
+        )
+    }
+    var cameraRotationQuarterTurns by rememberSaveable {
+        mutableIntStateOf(
+            CameraRotation.normalize(preferences.getInt("camera_rotation_quarter_turns", 0)),
+        )
     }
 
     var cameraPermissionGranted by remember {
@@ -144,10 +160,24 @@ private fun GhostCameraApp() {
                 references.lastIndex.coerceAtLeast(0),
             ),
             ghostOpacity = ghostOpacity,
+            ghostScaleMode = ghostScaleMode,
+            cameraRotationQuarterTurns = cameraRotationQuarterTurns,
             onSelectedIndexChange = { selectedIndex = it },
             onGhostOpacityChange = { ghostOpacity = it },
             onGhostOpacityChangeFinished = {
                 preferences.edit().putFloat("ghost_opacity", ghostOpacity).apply()
+            },
+            onGhostScaleModeChange = { mode ->
+                ghostScaleMode = mode
+                preferences.edit()
+                    .putString("ghost_scale_mode", mode.preferenceValue)
+                    .apply()
+            },
+            onRotateCamera = {
+                cameraRotationQuarterTurns = CameraRotation.next(cameraRotationQuarterTurns)
+                preferences.edit()
+                    .putInt("camera_rotation_quarter_turns", cameraRotationQuarterTurns)
+                    .apply()
             },
             onManageReferences = { showReferenceManager = true },
             onAddReferences = ::openPhotoPicker,

@@ -15,32 +15,52 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.requiredSize
+import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.only
+import androidx.compose.foundation.layout.safeDrawing
+import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.ArrowBack
+import androidx.compose.material.icons.automirrored.outlined.RotateRight
 import androidx.compose.material.icons.outlined.AddPhotoAlternate
+import androidx.compose.material.icons.outlined.AspectRatio
 import androidx.compose.material.icons.outlined.Cameraswitch
+import androidx.compose.material.icons.outlined.Check
 import androidx.compose.material.icons.outlined.CheckCircle
 import androidx.compose.material.icons.outlined.ChevronLeft
 import androidx.compose.material.icons.outlined.ChevronRight
+import androidx.compose.material.icons.outlined.Crop
+import androidx.compose.material.icons.outlined.FitScreen
 import androidx.compose.material.icons.outlined.FlashAuto
 import androidx.compose.material.icons.outlined.FlashOff
 import androidx.compose.material.icons.outlined.FlashOn
-import androidx.compose.material.icons.outlined.Layers
+import androidx.compose.material.icons.outlined.MoreVert
 import androidx.compose.material.icons.outlined.PhotoLibrary
 import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.FilledIconButton
+import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.IconButtonDefaults
@@ -61,10 +81,12 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
@@ -76,10 +98,13 @@ import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import coil.compose.AsyncImage
+import com.wootan.ghostcamera.camera.CameraRotation
 import com.wootan.ghostcamera.camera.CaptureStore
 import com.wootan.ghostcamera.data.ReferencePhoto
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import kotlin.math.abs
 import kotlin.math.roundToInt
 
@@ -89,9 +114,13 @@ fun CameraScreen(
     references: List<ReferencePhoto>,
     selectedIndex: Int,
     ghostOpacity: Float,
+    ghostScaleMode: GhostScaleMode,
+    cameraRotationQuarterTurns: Int,
     onSelectedIndexChange: (Int) -> Unit,
     onGhostOpacityChange: (Float) -> Unit,
     onGhostOpacityChangeFinished: () -> Unit,
+    onGhostScaleModeChange: (GhostScaleMode) -> Unit,
+    onRotateCamera: () -> Unit,
     onManageReferences: () -> Unit,
     onAddReferences: () -> Unit,
     onRequestCameraPermission: () -> Unit,
@@ -105,9 +134,13 @@ fun CameraScreen(
         references = references,
         selectedIndex = selectedIndex,
         ghostOpacity = ghostOpacity,
+        ghostScaleMode = ghostScaleMode,
+        cameraRotationQuarterTurns = cameraRotationQuarterTurns,
         onSelectedIndexChange = onSelectedIndexChange,
         onGhostOpacityChange = onGhostOpacityChange,
         onGhostOpacityChangeFinished = onGhostOpacityChangeFinished,
+        onGhostScaleModeChange = onGhostScaleModeChange,
+        onRotateCamera = onRotateCamera,
         onManageReferences = onManageReferences,
         onAddReferences = onAddReferences,
     )
@@ -118,9 +151,13 @@ private fun ActiveCameraScreen(
     references: List<ReferencePhoto>,
     selectedIndex: Int,
     ghostOpacity: Float,
+    ghostScaleMode: GhostScaleMode,
+    cameraRotationQuarterTurns: Int,
     onSelectedIndexChange: (Int) -> Unit,
     onGhostOpacityChange: (Float) -> Unit,
     onGhostOpacityChangeFinished: () -> Unit,
+    onGhostScaleModeChange: (GhostScaleMode) -> Unit,
+    onRotateCamera: () -> Unit,
     onManageReferences: () -> Unit,
     onAddReferences: () -> Unit,
 ) {
@@ -174,24 +211,35 @@ private fun ActiveCameraScreen(
     fun capturePhoto() {
         if (captureRunning) return
         captureRunning = true
+        val captureRotationQuarterTurns = cameraRotationQuarterTurns
         val target = CaptureStore.createTarget(context)
         controller.takePicture(
             target.options,
             ContextCompat.getMainExecutor(context),
             object : ImageCapture.OnImageSavedCallback {
                 override fun onImageSaved(outputFileResults: ImageCapture.OutputFileResults) {
-                    lastCaptureUri = CaptureStore.resolveSavedUri(
+                    val savedUri = CaptureStore.resolveSavedUri(
                         context,
                         outputFileResults,
                         target,
                     )
-                    captureRunning = false
-                    captureFlashVisible = true
                     scope.launch {
+                        savedUri?.let { uri ->
+                            withContext(Dispatchers.IO) {
+                                CaptureStore.applyAdditionalRotation(
+                                    context,
+                                    uri,
+                                    captureRotationQuarterTurns,
+                                )
+                            }
+                        }
+                        lastCaptureUri = savedUri
+                        captureRunning = false
+                        captureFlashVisible = true
                         delay(90)
                         captureFlashVisible = false
+                        Toast.makeText(context, "갤러리에 저장했습니다", Toast.LENGTH_SHORT).show()
                     }
-                    Toast.makeText(context, "갤러리에 저장했습니다", Toast.LENGTH_SHORT).show()
                 }
 
                 override fun onError(exception: ImageCaptureException) {
@@ -213,6 +261,7 @@ private fun ActiveCameraScreen(
     ) {
         CameraPreview(
             controller = controller,
+            rotationQuarterTurns = cameraRotationQuarterTurns,
             modifier = Modifier.fillMaxSize(),
         )
 
@@ -226,7 +275,7 @@ private fun ActiveCameraScreen(
                         alpha = ghostOpacity
                         scaleX = if (useFrontCamera) -1f else 1f
                     },
-                contentScale = ContentScale.Crop,
+                contentScale = ghostScaleMode.contentScale,
             )
         }
 
@@ -234,6 +283,7 @@ private fun ActiveCameraScreen(
             referenceCount = references.size,
             selectedIndex = selectedIndex,
             flashMode = flashMode,
+            cameraRotationDegrees = CameraRotation.degrees(cameraRotationQuarterTurns),
             onPreviousReference = { onSelectedIndexChange(selectedIndex - 1) },
             onNextReference = { onSelectedIndexChange(selectedIndex + 1) },
             onManageReferences = onManageReferences,
@@ -245,6 +295,7 @@ private fun ActiveCameraScreen(
                     else -> ImageCapture.FLASH_MODE_OFF
                 }
             },
+            onRotateCamera = onRotateCamera,
             onSwitchCamera = { useFrontCamera = !useFrontCamera },
             modifier = Modifier.align(Alignment.TopCenter),
         )
@@ -252,10 +303,12 @@ private fun ActiveCameraScreen(
         CameraBottomBar(
             hasReference = currentReference != null,
             ghostOpacity = ghostOpacity,
+            ghostScaleMode = ghostScaleMode,
             captureRunning = captureRunning,
             lastCaptureUri = lastCaptureUri,
             onGhostOpacityChange = onGhostOpacityChange,
             onGhostOpacityChangeFinished = onGhostOpacityChangeFinished,
+            onGhostScaleModeChange = onGhostScaleModeChange,
             onCapture = ::capturePhoto,
             onOpenLastCapture = { showLastCapture = true },
             modifier = Modifier.align(Alignment.BottomCenter),
@@ -282,19 +335,34 @@ private fun ActiveCameraScreen(
 @Composable
 private fun CameraPreview(
     controller: LifecycleCameraController,
+    rotationQuarterTurns: Int,
     modifier: Modifier = Modifier,
 ) {
-    AndroidView(
-        factory = { context ->
-            PreviewView(context).apply {
-                scaleType = PreviewView.ScaleType.FILL_CENTER
-                implementationMode = PreviewView.ImplementationMode.COMPATIBLE
-                this.controller = controller
-            }
-        },
-        update = { previewView -> previewView.controller = controller },
-        modifier = modifier,
-    )
+    val normalizedRotation = CameraRotation.normalize(rotationQuarterTurns)
+    BoxWithConstraints(
+        modifier = modifier.clipToBounds(),
+        contentAlignment = Alignment.Center,
+    ) {
+        val previewModifier = if (normalizedRotation % 2 == 1) {
+            Modifier.requiredSize(width = maxHeight, height = maxWidth)
+        } else {
+            Modifier.fillMaxSize()
+        }
+
+        AndroidView(
+            factory = { context ->
+                PreviewView(context).apply {
+                    scaleType = PreviewView.ScaleType.FILL_CENTER
+                    implementationMode = PreviewView.ImplementationMode.COMPATIBLE
+                    this.controller = controller
+                }
+            },
+            update = { previewView -> previewView.controller = controller },
+            modifier = previewModifier.graphicsLayer {
+                rotationZ = CameraRotation.degrees(normalizedRotation).toFloat()
+            },
+        )
+    }
 }
 
 @Composable
@@ -302,19 +370,28 @@ private fun CameraTopBar(
     referenceCount: Int,
     selectedIndex: Int,
     flashMode: Int,
+    cameraRotationDegrees: Int,
     onPreviousReference: () -> Unit,
     onNextReference: () -> Unit,
     onManageReferences: () -> Unit,
     onAddReferences: () -> Unit,
     onFlashModeChange: () -> Unit,
+    onRotateCamera: () -> Unit,
     onSwitchCamera: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    val compactControls = LocalConfiguration.current.screenWidthDp < 500
+
     Row(
         modifier = modifier
             .fillMaxWidth()
             .background(Color(0x66000000))
-            .padding(top = 34.dp, start = 8.dp, end = 8.dp, bottom = 10.dp),
+            .windowInsetsPadding(
+                WindowInsets.safeDrawing.only(
+                    WindowInsetsSides.Top + WindowInsetsSides.Horizontal,
+                ),
+            )
+            .padding(top = 8.dp, start = 8.dp, end = 8.dp, bottom = 10.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         CameraIconButton(
@@ -328,23 +405,22 @@ private fun CameraTopBar(
             contentAlignment = Alignment.Center,
         ) {
             if (referenceCount == 0) {
-                Surface(
-                    modifier = Modifier.clickable(onClick = onAddReferences),
+                FilledTonalButton(
+                    onClick = onAddReferences,
                     shape = RoundedCornerShape(6.dp),
-                    color = PanelBlack,
+                    colors = ButtonDefaults.filledTonalButtonColors(
+                        containerColor = PanelBlack,
+                        contentColor = SoftWhite,
+                    ),
+                    contentPadding = PaddingValues(horizontal = 14.dp, vertical = 10.dp),
                 ) {
-                    Row(
-                        modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        Icon(
-                            Icons.Outlined.AddPhotoAlternate,
-                            contentDescription = null,
-                            modifier = Modifier.size(20.dp),
-                        )
-                        Spacer(Modifier.width(8.dp))
-                        Text("기준 사진 등록", fontSize = 14.sp)
-                    }
+                    Icon(
+                        Icons.Outlined.AddPhotoAlternate,
+                        contentDescription = null,
+                        modifier = Modifier.size(20.dp),
+                    )
+                    Spacer(Modifier.width(8.dp))
+                    Text("기준 사진 등록", fontSize = 14.sp)
                 }
             } else {
                 ReferenceNavigator(
@@ -356,30 +432,129 @@ private fun CameraTopBar(
             }
         }
 
-        CameraIconButton(
-            icon = {
-                Icon(
-                    imageVector = when (flashMode) {
-                        ImageCapture.FLASH_MODE_AUTO -> Icons.Outlined.FlashAuto
-                        ImageCapture.FLASH_MODE_ON -> Icons.Outlined.FlashOn
-                        else -> Icons.Outlined.FlashOff
-                    },
-                    contentDescription = null,
-                )
-            },
-            contentDescription = when (flashMode) {
-                ImageCapture.FLASH_MODE_AUTO -> "플래시 자동"
-                ImageCapture.FLASH_MODE_ON -> "플래시 켬"
-                else -> "플래시 끔"
-            },
-            onClick = onFlashModeChange,
+        CameraRotationButton(
+            rotationDegrees = cameraRotationDegrees,
+            onClick = onRotateCamera,
         )
-        CameraIconButton(
-            icon = { Icon(Icons.Outlined.Cameraswitch, contentDescription = null) },
-            contentDescription = "카메라 전환",
-            onClick = onSwitchCamera,
-        )
+        if (compactControls) {
+            CompactCameraActions(
+                flashMode = flashMode,
+                onFlashModeChange = onFlashModeChange,
+                onSwitchCamera = onSwitchCamera,
+            )
+        } else {
+            FlashButton(
+                flashMode = flashMode,
+                onClick = onFlashModeChange,
+            )
+            CameraIconButton(
+                icon = { Icon(Icons.Outlined.Cameraswitch, contentDescription = null) },
+                contentDescription = "카메라 전환",
+                onClick = onSwitchCamera,
+            )
+        }
     }
+}
+
+@Composable
+private fun CameraRotationButton(
+    rotationDegrees: Int,
+    onClick: () -> Unit,
+) {
+    CameraIconButton(
+        icon = {
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                Icon(
+                    Icons.AutoMirrored.Outlined.RotateRight,
+                    contentDescription = null,
+                    modifier = Modifier.size(21.dp),
+                )
+                Text(
+                    text = "$rotationDegrees°",
+                    fontSize = 9.sp,
+                    lineHeight = 10.sp,
+                )
+            }
+        },
+        contentDescription = "카메라 회전, 현재 ${rotationDegrees}도",
+        onClick = onClick,
+    )
+}
+
+@Composable
+private fun FlashButton(
+    flashMode: Int,
+    onClick: () -> Unit,
+) {
+    CameraIconButton(
+        icon = {
+            Icon(
+                imageVector = when (flashMode) {
+                    ImageCapture.FLASH_MODE_AUTO -> Icons.Outlined.FlashAuto
+                    ImageCapture.FLASH_MODE_ON -> Icons.Outlined.FlashOn
+                    else -> Icons.Outlined.FlashOff
+                },
+                contentDescription = null,
+            )
+        },
+        contentDescription = flashModeLabel(flashMode),
+        onClick = onClick,
+    )
+}
+
+@Composable
+private fun CompactCameraActions(
+    flashMode: Int,
+    onFlashModeChange: () -> Unit,
+    onSwitchCamera: () -> Unit,
+) {
+    var expanded by remember { mutableStateOf(false) }
+
+    Box {
+        CameraIconButton(
+            icon = { Icon(Icons.Outlined.MoreVert, contentDescription = null) },
+            contentDescription = "카메라 메뉴",
+            onClick = { expanded = true },
+        )
+        DropdownMenu(
+            expanded = expanded,
+            onDismissRequest = { expanded = false },
+        ) {
+            DropdownMenuItem(
+                text = { Text(flashModeLabel(flashMode)) },
+                leadingIcon = {
+                    Icon(
+                        imageVector = when (flashMode) {
+                            ImageCapture.FLASH_MODE_AUTO -> Icons.Outlined.FlashAuto
+                            ImageCapture.FLASH_MODE_ON -> Icons.Outlined.FlashOn
+                            else -> Icons.Outlined.FlashOff
+                        },
+                        contentDescription = null,
+                    )
+                },
+                onClick = {
+                    expanded = false
+                    onFlashModeChange()
+                },
+            )
+            DropdownMenuItem(
+                text = { Text("카메라 전환") },
+                leadingIcon = {
+                    Icon(Icons.Outlined.Cameraswitch, contentDescription = null)
+                },
+                onClick = {
+                    expanded = false
+                    onSwitchCamera()
+                },
+            )
+        }
+    }
+}
+
+private fun flashModeLabel(flashMode: Int): String = when (flashMode) {
+    ImageCapture.FLASH_MODE_AUTO -> "플래시 자동"
+    ImageCapture.FLASH_MODE_ON -> "플래시 켬"
+    else -> "플래시 끔"
 }
 
 @Composable
@@ -392,6 +567,7 @@ private fun ReferenceNavigator(
     Surface(
         shape = RoundedCornerShape(6.dp),
         color = PanelBlack,
+        contentColor = SoftWhite,
     ) {
         Row(
             modifier = Modifier
@@ -441,10 +617,12 @@ private fun ReferenceNavigator(
 private fun CameraBottomBar(
     hasReference: Boolean,
     ghostOpacity: Float,
+    ghostScaleMode: GhostScaleMode,
     captureRunning: Boolean,
     lastCaptureUri: Uri?,
     onGhostOpacityChange: (Float) -> Unit,
     onGhostOpacityChangeFinished: () -> Unit,
+    onGhostScaleModeChange: (GhostScaleMode) -> Unit,
     onCapture: () -> Unit,
     onOpenLastCapture: () -> Unit,
     modifier: Modifier = Modifier,
@@ -453,7 +631,8 @@ private fun CameraBottomBar(
         modifier = modifier
             .fillMaxWidth()
             .background(Color(0x66000000))
-            .padding(start = 20.dp, end = 20.dp, top = 12.dp, bottom = 28.dp),
+            .navigationBarsPadding()
+            .padding(start = 20.dp, end = 20.dp, top = 12.dp, bottom = 12.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         AnimatedVisibility(visible = hasReference) {
@@ -463,18 +642,17 @@ private fun CameraBottomBar(
                     .widthIn(max = 560.dp),
                 shape = RoundedCornerShape(6.dp),
                 color = PanelBlack,
+                contentColor = SoftWhite,
             ) {
                 Row(
                     modifier = Modifier.padding(horizontal = 14.dp, vertical = 5.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    Icon(
-                        Icons.Outlined.Layers,
-                        contentDescription = null,
-                        modifier = Modifier.size(22.dp),
-                        tint = GhostTeal,
+                    GhostScaleMenu(
+                        selectedMode = ghostScaleMode,
+                        onModeSelected = onGhostScaleModeChange,
                     )
-                    Spacer(Modifier.width(10.dp))
+                    Spacer(Modifier.width(4.dp))
                     Slider(
                         value = ghostOpacity,
                         onValueChange = onGhostOpacityChange,
@@ -528,6 +706,59 @@ private fun CameraBottomBar(
 }
 
 @Composable
+private fun GhostScaleMenu(
+    selectedMode: GhostScaleMode,
+    onModeSelected: (GhostScaleMode) -> Unit,
+) {
+    var expanded by remember { mutableStateOf(false) }
+
+    Box {
+        IconButton(
+            onClick = { expanded = true },
+            modifier = Modifier
+                .size(40.dp)
+                .semantics {
+                    contentDescription = "고스트 비율, 현재 ${selectedMode.label}"
+                },
+        ) {
+            Icon(
+                imageVector = ghostScaleIcon(selectedMode),
+                contentDescription = null,
+                tint = GhostTeal,
+            )
+        }
+        DropdownMenu(
+            expanded = expanded,
+            onDismissRequest = { expanded = false },
+        ) {
+            GhostScaleMode.entries.forEach { mode ->
+                DropdownMenuItem(
+                    text = { Text(mode.label) },
+                    leadingIcon = {
+                        Icon(ghostScaleIcon(mode), contentDescription = null)
+                    },
+                    trailingIcon = if (mode == selectedMode) {
+                        { Icon(Icons.Outlined.Check, contentDescription = null) }
+                    } else {
+                        null
+                    },
+                    onClick = {
+                        expanded = false
+                        onModeSelected(mode)
+                    },
+                )
+            }
+        }
+    }
+}
+
+private fun ghostScaleIcon(mode: GhostScaleMode) = when (mode) {
+    GhostScaleMode.Fill -> Icons.Outlined.Crop
+    GhostScaleMode.Fit -> Icons.Outlined.FitScreen
+    GhostScaleMode.Stretch -> Icons.Outlined.AspectRatio
+}
+
+@Composable
 private fun ShutterButton(
     captureRunning: Boolean,
     onClick: () -> Unit,
@@ -565,12 +796,14 @@ private fun CameraIconButton(
     contentDescription: String,
     onClick: () -> Unit,
 ) {
-    IconButton(
+    FilledIconButton(
         onClick = onClick,
         modifier = Modifier
             .size(48.dp)
-            .semantics { this.contentDescription = contentDescription },
-        colors = IconButtonDefaults.iconButtonColors(
+            .semantics(mergeDescendants = true) {
+                this.contentDescription = contentDescription
+            },
+        colors = IconButtonDefaults.filledIconButtonColors(
             containerColor = PanelBlack,
             contentColor = SoftWhite,
         ),
@@ -597,7 +830,12 @@ private fun LastCapturePreview(
             modifier = Modifier
                 .fillMaxWidth()
                 .background(Color(0x99000000))
-                .padding(top = 34.dp, start = 8.dp, end = 16.dp, bottom = 10.dp),
+                .windowInsetsPadding(
+                    WindowInsets.safeDrawing.only(
+                        WindowInsetsSides.Top + WindowInsetsSides.Horizontal,
+                    ),
+                )
+                .padding(top = 8.dp, start = 8.dp, end = 16.dp, bottom = 10.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             IconButton(onClick = onClose) {
@@ -625,6 +863,7 @@ private fun CameraPermissionScreen(onRequestPermission: () -> Unit) {
         modifier = Modifier
             .fillMaxSize()
             .background(CameraBlack)
+            .safeDrawingPadding()
             .padding(32.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center,

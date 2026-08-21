@@ -8,6 +8,7 @@ import android.os.Build
 import android.os.Environment
 import android.provider.MediaStore
 import androidx.camera.core.ImageCapture
+import androidx.exifinterface.media.ExifInterface
 import java.io.File
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -66,8 +67,59 @@ object CaptureStore {
         return Uri.fromFile(file)
     }
 
+    fun applyAdditionalRotation(
+        context: Context,
+        uri: Uri,
+        quarterTurns: Int,
+    ): Boolean {
+        val normalizedTurns = CameraRotation.normalize(quarterTurns)
+        if (normalizedTurns == 0) return true
+
+        return runCatching {
+            if (uri.scheme == "file") {
+                val path = requireNotNull(uri.path)
+                rotateExif(ExifInterface(path), normalizedTurns)
+            } else {
+                context.contentResolver.openFileDescriptor(uri, "rw")?.use { descriptor ->
+                    rotateExif(ExifInterface(descriptor.fileDescriptor), normalizedTurns)
+                } ?: error("Unable to open saved image")
+            }
+        }.isSuccess
+    }
+
+    private fun rotateExif(exif: ExifInterface, quarterTurns: Int) {
+        val currentOrientation = exif.getAttributeInt(
+            ExifInterface.TAG_ORIENTATION,
+            ExifInterface.ORIENTATION_NORMAL,
+        )
+        val rotatedOrientation = rotateExifOrientation(currentOrientation, quarterTurns)
+        exif.setAttribute(ExifInterface.TAG_ORIENTATION, rotatedOrientation.toString())
+        exif.saveAttributes()
+    }
+
     private fun timestamp(): String = SimpleDateFormat(
         "yyyyMMdd_HHmmss_SSS",
         Locale.US,
     ).format(Date())
+}
+
+internal fun rotateExifOrientation(orientation: Int, quarterTurns: Int): Int {
+    var result = when (orientation) {
+        in ExifInterface.ORIENTATION_NORMAL..ExifInterface.ORIENTATION_ROTATE_270 -> orientation
+        else -> ExifInterface.ORIENTATION_NORMAL
+    }
+    repeat(CameraRotation.normalize(quarterTurns)) {
+        result = when (result) {
+            ExifInterface.ORIENTATION_NORMAL -> ExifInterface.ORIENTATION_ROTATE_90
+            ExifInterface.ORIENTATION_ROTATE_90 -> ExifInterface.ORIENTATION_ROTATE_180
+            ExifInterface.ORIENTATION_ROTATE_180 -> ExifInterface.ORIENTATION_ROTATE_270
+            ExifInterface.ORIENTATION_ROTATE_270 -> ExifInterface.ORIENTATION_NORMAL
+            ExifInterface.ORIENTATION_FLIP_HORIZONTAL -> ExifInterface.ORIENTATION_TRANSPOSE
+            ExifInterface.ORIENTATION_TRANSPOSE -> ExifInterface.ORIENTATION_FLIP_VERTICAL
+            ExifInterface.ORIENTATION_FLIP_VERTICAL -> ExifInterface.ORIENTATION_TRANSVERSE
+            ExifInterface.ORIENTATION_TRANSVERSE -> ExifInterface.ORIENTATION_FLIP_HORIZONTAL
+            else -> ExifInterface.ORIENTATION_ROTATE_90
+        }
+    }
+    return result
 }
