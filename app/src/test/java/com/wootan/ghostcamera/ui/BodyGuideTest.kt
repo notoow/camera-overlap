@@ -71,6 +71,25 @@ class BodyGuideTest {
         )
     }
 
+    @Test
+    fun `guide positions snap to half percent increments`() {
+        val moved = BodyGuidePositions.Default.withPosition(
+            BodyGuideLine.Shoulder,
+            0.283f,
+        )
+        val restored = BodyGuidePositions.fromStored(
+            shoulder = 0.283f,
+            chest = 0.447f,
+            pelvis = 0.712f,
+        )
+
+        assertFloatEquals(0.285f, moved.shoulder)
+        assertFloatEquals(0.285f, restored.shoulder)
+        assertFloatEquals(0.445f, restored.chest)
+        assertFloatEquals(0.710f, restored.pelvis)
+        assertEquals("28.5%", guidePercentageLabel(moved.shoulder))
+    }
+
     private fun assertFloatEquals(expected: Float, actual: Float) {
         assertEquals(expected.toDouble(), actual.toDouble(), 0.0001)
     }

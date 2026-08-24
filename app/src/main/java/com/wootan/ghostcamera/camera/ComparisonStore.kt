@@ -23,6 +23,7 @@ import java.io.File
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+import kotlin.math.max
 import kotlin.math.min
 import kotlin.math.roundToInt
 
@@ -86,19 +87,16 @@ object ComparisonStore {
         label: String,
     ) {
         val panelLeft = panelIndex * PANEL_WIDTH
-        val target = fitRect(
+        val source = centerCropRect(
             sourceWidth = bitmap.width,
             sourceHeight = bitmap.height,
-            targetLeft = panelLeft,
-            targetTop = 0,
             targetWidth = PANEL_WIDTH,
             targetHeight = OUTPUT_HEIGHT,
         )
-        val destination = Rect(target.left, target.top, target.right, target.bottom)
         canvas.drawBitmap(
             bitmap,
-            null,
-            destination,
+            Rect(source.left, source.top, source.right, source.bottom),
+            Rect(panelLeft, 0, panelLeft + PANEL_WIDTH, OUTPUT_HEIGHT),
             Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG),
         )
         drawLabel(canvas, panelLeft, label)
@@ -166,7 +164,7 @@ object ComparisonStore {
         }
         return ImageDecoder.decodeBitmap(source) { decoder, info, _ ->
             decoder.allocator = ImageDecoder.ALLOCATOR_SOFTWARE
-            val target = boundedSize(
+            val target = coveringSize(
                 info.size.width,
                 info.size.height,
                 maxWidth,
@@ -209,7 +207,7 @@ object ComparisonStore {
             )
         } ?: ExifInterface.ORIENTATION_NORMAL
         val oriented = applyExifOrientation(decoded, orientation)
-        val target = boundedSize(
+        val target = coveringSize(
             oriented.width,
             oriented.height,
             maxWidth,
@@ -280,7 +278,7 @@ object ComparisonStore {
         maxWidth: Int,
         maxHeight: Int,
     ): Int {
-        val target = boundedSize(sourceWidth, sourceHeight, maxWidth, maxHeight)
+        val target = coveringSize(sourceWidth, sourceHeight, maxWidth, maxHeight)
         var sampleSize = 1
         while (
             sourceWidth / (sampleSize * 2) >= target.width &&
@@ -395,7 +393,7 @@ internal fun preRotationDecodeBounds(
     }
 }
 
-internal fun boundedSize(
+internal fun coveringSize(
     sourceWidth: Int,
     sourceHeight: Int,
     maxWidth: Int,
@@ -405,7 +403,7 @@ internal fun boundedSize(
     require(maxWidth > 0 && maxHeight > 0)
     val scale = min(
         1f,
-        min(maxWidth.toFloat() / sourceWidth, maxHeight.toFloat() / sourceHeight),
+        max(maxWidth.toFloat() / sourceWidth, maxHeight.toFloat() / sourceHeight),
     )
     return PixelSize(
         width = (sourceWidth * scale).roundToInt().coerceAtLeast(1),
@@ -413,23 +411,25 @@ internal fun boundedSize(
     )
 }
 
-internal fun fitRect(
+internal fun centerCropRect(
     sourceWidth: Int,
     sourceHeight: Int,
-    targetLeft: Int,
-    targetTop: Int,
     targetWidth: Int,
     targetHeight: Int,
 ): PixelRect {
     require(sourceWidth > 0 && sourceHeight > 0)
     require(targetWidth > 0 && targetHeight > 0)
-    val scale = min(
-        targetWidth.toFloat() / sourceWidth,
-        targetHeight.toFloat() / sourceHeight,
-    )
-    val width = (sourceWidth * scale).roundToInt().coerceAtLeast(1)
-    val height = (sourceHeight * scale).roundToInt().coerceAtLeast(1)
-    val left = targetLeft + (targetWidth - width) / 2
-    val top = targetTop + (targetHeight - height) / 2
-    return PixelRect(left, top, left + width, top + height)
+    return if (sourceWidth.toLong() * targetHeight > sourceHeight.toLong() * targetWidth) {
+        val cropWidth = (sourceHeight.toFloat() * targetWidth / targetHeight)
+            .roundToInt()
+            .coerceIn(1, sourceWidth)
+        val left = (sourceWidth - cropWidth) / 2
+        PixelRect(left, 0, left + cropWidth, sourceHeight)
+    } else {
+        val cropHeight = (sourceWidth.toFloat() * targetHeight / targetWidth)
+            .roundToInt()
+            .coerceIn(1, sourceHeight)
+        val top = (sourceHeight - cropHeight) / 2
+        PixelRect(0, top, sourceWidth, top + cropHeight)
+    }
 }

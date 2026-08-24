@@ -214,7 +214,15 @@ private fun ActiveCameraScreen(
     var lastCaptureReferenceId by rememberSaveable { mutableStateOf<String?>(null) }
     var lastCaptureReferenceRotationQuarterTurns by rememberSaveable { mutableIntStateOf(0) }
     var showLastCapture by rememberSaveable { mutableStateOf(false) }
+    var scaleTooltipMode by remember { mutableStateOf<GhostScaleMode?>(null) }
     val cameraReady = cameraInitialized && cameraStreaming && !cameraInitializationFailed
+
+    LaunchedEffect(scaleTooltipMode) {
+        if (scaleTooltipMode != null) {
+            delay(4_000)
+            scaleTooltipMode = null
+        }
+    }
 
     DisposableEffect(controller, lifecycleOwner) {
         var active = true
@@ -412,13 +420,17 @@ private fun ActiveCameraScreen(
             hasReference = currentReference != null,
             ghostOpacity = ghostOpacity,
             ghostScaleMode = ghostScaleMode,
+            scaleTooltipMode = scaleTooltipMode,
             cameraReady = cameraReady,
             cameraInitializationFailed = cameraInitializationFailed,
             captureRunning = captureRunning,
             lastCaptureUri = lastCaptureUri,
             onGhostOpacityChange = onGhostOpacityChange,
             onGhostOpacityChangeFinished = onGhostOpacityChangeFinished,
-            onGhostScaleModeChange = onGhostScaleModeChange,
+            onGhostScaleModeChange = { mode ->
+                scaleTooltipMode = mode
+                onGhostScaleModeChange(mode)
+            },
             onCapture = ::capturePhoto,
             onOpenLastCapture = { showLastCapture = true },
             modifier = Modifier.align(Alignment.BottomCenter),
@@ -927,6 +939,7 @@ private fun CameraBottomBar(
     hasReference: Boolean,
     ghostOpacity: Float,
     ghostScaleMode: GhostScaleMode,
+    scaleTooltipMode: GhostScaleMode?,
     cameraReady: Boolean,
     cameraInitializationFailed: Boolean,
     captureRunning: Boolean,
@@ -952,37 +965,47 @@ private fun CameraBottomBar(
                     .fillMaxWidth()
                     .widthIn(max = 640.dp),
             ) {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(48.dp),
-                    verticalAlignment = Alignment.CenterVertically,
+                androidx.compose.animation.AnimatedVisibility(
+                    visible = scaleTooltipMode != null,
                 ) {
-                    GhostScaleMenu(
-                        selectedMode = ghostScaleMode,
-                        onModeSelected = onGhostScaleModeChange,
-                    )
-                    Spacer(Modifier.width(4.dp))
-                    Slider(
-                        value = ghostOpacity,
-                        onValueChange = onGhostOpacityChange,
-                        onValueChangeFinished = onGhostOpacityChangeFinished,
-                        modifier = Modifier.weight(1f),
-                        colors = SliderDefaults.colors(
-                            thumbColor = SoftWhite,
-                            activeTrackColor = SoftWhite,
-                            inactiveTrackColor = SoftWhite.copy(alpha = 0.24f),
-                            activeTickColor = Color.Transparent,
-                            inactiveTickColor = Color.Transparent,
-                        ),
-                    )
-                    Text(
-                        text = "${(ghostOpacity * 100).roundToInt()}%",
-                        modifier = Modifier.width(48.dp),
-                        textAlign = androidx.compose.ui.text.style.TextAlign.End,
-                        fontSize = 13.sp,
-                        color = SoftWhite.copy(alpha = 0.72f),
-                    )
+                    Column {
+                        ScaleModeTooltip(scaleTooltipMode ?: ghostScaleMode)
+                        Spacer(Modifier.height(6.dp))
+                    }
+                }
+                Box(Modifier.fillMaxWidth()) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(48.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        GhostScaleControl(
+                            selectedMode = ghostScaleMode,
+                            onModeSelected = onGhostScaleModeChange,
+                        )
+                        Spacer(Modifier.width(4.dp))
+                        Slider(
+                            value = ghostOpacity,
+                            onValueChange = onGhostOpacityChange,
+                            onValueChangeFinished = onGhostOpacityChangeFinished,
+                            modifier = Modifier.weight(1f),
+                            colors = SliderDefaults.colors(
+                                thumbColor = SoftWhite,
+                                activeTrackColor = SoftWhite,
+                                inactiveTrackColor = SoftWhite.copy(alpha = 0.24f),
+                                activeTickColor = Color.Transparent,
+                                inactiveTickColor = Color.Transparent,
+                            ),
+                        )
+                        Text(
+                            text = "${(ghostOpacity * 100).roundToInt()}%",
+                            modifier = Modifier.width(48.dp),
+                            textAlign = androidx.compose.ui.text.style.TextAlign.End,
+                            fontSize = 13.sp,
+                            color = SoftWhite.copy(alpha = 0.72f),
+                        )
+                    }
                 }
                 HorizontalDivider(color = SoftWhite.copy(alpha = 0.16f))
             }
@@ -1026,48 +1049,52 @@ private fun CameraBottomBar(
 }
 
 @Composable
-private fun GhostScaleMenu(
+private fun GhostScaleControl(
     selectedMode: GhostScaleMode,
     onModeSelected: (GhostScaleMode) -> Unit,
 ) {
-    var expanded by remember { mutableStateOf(false) }
+    IconButton(
+        onClick = { onModeSelected(selectedMode.next()) },
+        modifier = Modifier
+            .size(40.dp)
+            .semantics {
+                contentDescription =
+                    "고스트 비율 ${selectedMode.label}, 누르면 다음 모드"
+            },
+    ) {
+        Icon(
+            imageVector = ghostScaleIcon(selectedMode),
+            contentDescription = null,
+            tint = SoftWhite,
+        )
+    }
+}
 
-    Box {
-        IconButton(
-            onClick = { expanded = true },
+@Composable
+private fun ScaleModeTooltip(mode: GhostScaleMode) {
+    Surface(
+        shape = RoundedCornerShape(4.dp),
+        color = Color(0xF21A1C1C),
+        contentColor = SoftWhite,
+        shadowElevation = 4.dp,
+    ) {
+        Column(
             modifier = Modifier
-                .size(40.dp)
-                .semantics {
-                    contentDescription = "고스트 비율, 현재 ${selectedMode.label}"
-                },
+                .widthIn(max = 280.dp)
+                .padding(horizontal = 12.dp, vertical = 8.dp),
         ) {
-            Icon(
-                imageVector = ghostScaleIcon(selectedMode),
-                contentDescription = null,
-                tint = SoftWhite,
+            Text(
+                text = mode.label,
+                color = ClinicalCyan,
+                fontSize = 12.sp,
+                lineHeight = 14.sp,
             )
-        }
-        DropdownMenu(
-            expanded = expanded,
-            onDismissRequest = { expanded = false },
-        ) {
-            GhostScaleMode.entries.forEach { mode ->
-                DropdownMenuItem(
-                    text = { Text(mode.label) },
-                    leadingIcon = {
-                        Icon(ghostScaleIcon(mode), contentDescription = null)
-                    },
-                    trailingIcon = if (mode == selectedMode) {
-                        { Icon(Icons.Outlined.Check, contentDescription = null) }
-                    } else {
-                        null
-                    },
-                    onClick = {
-                        expanded = false
-                        onModeSelected(mode)
-                    },
-                )
-            }
+            Text(
+                text = mode.description,
+                color = SoftWhite.copy(alpha = 0.82f),
+                fontSize = 11.sp,
+                lineHeight = 14.sp,
+            )
         }
     }
 }
@@ -1327,7 +1354,7 @@ private fun ComparisonPane(
     Box(
         modifier = modifier.background(Color.Black),
     ) {
-        RotatedFitImage(
+        RotatedCropImage(
             model = model,
             contentDescription = contentDescription,
             rotationQuarterTurns = rotationQuarterTurns,
@@ -1351,7 +1378,7 @@ private fun ComparisonPane(
 }
 
 @Composable
-private fun RotatedFitImage(
+private fun RotatedCropImage(
     model: Any,
     contentDescription: String,
     rotationQuarterTurns: Int,
@@ -1373,7 +1400,7 @@ private fun RotatedFitImage(
             modifier = imageModifier.graphicsLayer {
                 rotationZ = CameraRotation.degrees(normalizedRotation).toFloat()
             },
-            contentScale = ContentScale.Fit,
+            contentScale = ContentScale.Crop,
         )
     }
 }

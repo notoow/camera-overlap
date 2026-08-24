@@ -1,5 +1,7 @@
 package com.wootan.ghostcamera.ui
 
+import kotlin.math.roundToInt
+
 enum class BodyGuideMode {
     Off,
     Locked,
@@ -25,18 +27,19 @@ data class BodyGuidePositions(
 
     fun withPosition(line: BodyGuideLine, value: Float): BodyGuidePositions {
         val finiteValue = value.takeIf { it.isFinite() } ?: position(line)
+        val snappedValue = snapPosition(finiteValue)
         return when (line) {
             BodyGuideLine.Shoulder -> copy(
-                shoulder = finiteValue.coerceWithin(MinPosition, chest - MinimumGap),
+                shoulder = snappedValue.coerceWithin(MinPosition, chest - MinimumGap),
             )
             BodyGuideLine.Chest -> copy(
-                chest = finiteValue.coerceWithin(
+                chest = snappedValue.coerceWithin(
                     shoulder + MinimumGap,
                     pelvis - MinimumGap,
                 ),
             )
             BodyGuideLine.Pelvis -> copy(
-                pelvis = finiteValue.coerceWithin(chest + MinimumGap, MaxPosition),
+                pelvis = snappedValue.coerceWithin(chest + MinimumGap, MaxPosition),
             )
         }
     }
@@ -45,6 +48,7 @@ data class BodyGuidePositions(
         const val MinPosition = 0.12f
         const val MaxPosition = 0.88f
         const val MinimumGap = 0.10f
+        const val PositionStep = 0.005f
 
         val Default = BodyGuidePositions(
             shoulder = 0.28f,
@@ -57,14 +61,17 @@ data class BodyGuidePositions(
             chest: Float,
             pelvis: Float,
         ): BodyGuidePositions {
-            val safeShoulder = shoulder.finiteOr(Default.shoulder)
+            val safeShoulder = snapPosition(shoulder.finiteOr(Default.shoulder))
                 .coerceWithin(MinPosition, MaxPosition - MinimumGap * 2)
-            val safeChest = chest.finiteOr(Default.chest)
+            val safeChest = snapPosition(chest.finiteOr(Default.chest))
                 .coerceWithin(safeShoulder + MinimumGap, MaxPosition - MinimumGap)
-            val safePelvis = pelvis.finiteOr(Default.pelvis)
+            val safePelvis = snapPosition(pelvis.finiteOr(Default.pelvis))
                 .coerceWithin(safeChest + MinimumGap, MaxPosition)
             return BodyGuidePositions(safeShoulder, safeChest, safePelvis)
         }
+
+        internal fun snapPosition(value: Float): Float =
+            (value / PositionStep).roundToInt() * PositionStep
 
         private fun Float.finiteOr(fallback: Float): Float =
             takeIf { it.isFinite() } ?: fallback

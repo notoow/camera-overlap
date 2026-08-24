@@ -182,8 +182,8 @@ private fun GuideLineHandle(
                 )
             }
             .semantics {
-                contentDescription = "${line.label} 가이드 위치"
-                stateDescription = "${(position * 100).roundToInt()} 퍼센트"
+                contentDescription = "${line.label} 가이드 위치 ${guidePercentageLabel(position)}"
+                stateDescription = guidePercentageLabel(position)
                 progressBarRangeInfo = ProgressBarRangeInfo(
                     current = position,
                     range = BodyGuidePositions.MinPosition..BodyGuidePositions.MaxPosition,
@@ -204,11 +204,18 @@ private fun GuideLineHandle(
             contentColor = if (line == BodyGuideLine.Chest) ClinicalCyan else SoftWhite,
         ) {
             Text(
-                text = line.label,
+                text = "${line.label} ${guidePercentageLabel(position)}",
                 modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
                 fontSize = 11.sp,
                 lineHeight = 13.sp,
             )
         }
     }
+}
+
+internal fun guidePercentageLabel(position: Float): String {
+    val halfPercentSteps = (position * 200f).roundToInt()
+    val wholePercent = halfPercentSteps / 2
+    val decimal = if (halfPercentSteps % 2 == 0) 0 else 5
+    return "$wholePercent.$decimal%"
 }

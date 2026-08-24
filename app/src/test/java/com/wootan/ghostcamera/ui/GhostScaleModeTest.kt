@@ -11,4 +11,11 @@ class GhostScaleModeTest {
         assertEquals(GhostScaleMode.Fill, GhostScaleMode.fromPreference("unknown"))
         assertEquals(GhostScaleMode.Fill, GhostScaleMode.fromPreference(null))
     }
+
+    @Test
+    fun `scale button cycles through every mode`() {
+        assertEquals(GhostScaleMode.Fit, GhostScaleMode.Fill.next())
+        assertEquals(GhostScaleMode.Stretch, GhostScaleMode.Fit.next())
+        assertEquals(GhostScaleMode.Fill, GhostScaleMode.Stretch.next())
+    }
 }
