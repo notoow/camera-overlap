@@ -55,18 +55,18 @@ internal fun BodyGuideOverlay(
     ) {
         val density = LocalDensity.current
         val stageHeightPx = with(density) { maxHeight.toPx() }
-        val outlineWidth = with(density) { 3.5.dp.toPx() }
-        val lineWidth = with(density) { 1.4.dp.toPx() }
+        val outlineWidth = with(density) { 2.4.dp.toPx() }
+        val lineWidth = with(density) { 1.dp.toPx() }
         val dashLength = with(density) { 10.dp.toPx() }
         val dashGap = with(density) { 7.dp.toPx() }
-        val markerRadius = with(density) { 8.dp.toPx() }
-        val markerStroke = with(density) { 1.8.dp.toPx() }
-        val guideAlpha = if (mode == BodyGuideMode.Editing) 1f else 0.86f
+        val markerRadius = with(density) { 5.5.dp.toPx() }
+        val markerStroke = with(density) { 1.2.dp.toPx() }
+        val guideAlpha = if (mode == BodyGuideMode.Editing) 0.92f else 0.62f
 
         Canvas(Modifier.fillMaxSize()) {
-            val outline = Color.Black.copy(alpha = 0.76f)
-            val teal = GhostTeal.copy(alpha = guideAlpha)
-            val amber = CaptureAmber.copy(alpha = guideAlpha)
+            val outline = Color.Black.copy(alpha = 0.68f)
+            val neutral = SoftWhite.copy(alpha = guideAlpha)
+            val accent = ClinicalCyan.copy(alpha = guideAlpha)
             val dash = PathEffect.dashPathEffect(floatArrayOf(dashLength, dashGap))
 
             fun drawGuideLine(start: Offset, end: Offset, color: Color, dashed: Boolean = false) {
@@ -90,7 +90,7 @@ internal fun BodyGuideOverlay(
             drawGuideLine(
                 start = Offset(size.width / 2f, 0f),
                 end = Offset(size.width / 2f, size.height),
-                color = teal,
+                color = neutral,
                 dashed = true,
             )
 
@@ -99,7 +99,7 @@ internal fun BodyGuideOverlay(
                 drawGuideLine(
                     start = Offset(0f, y),
                     end = Offset(size.width, y),
-                    color = if (line == BodyGuideLine.Chest) amber else teal,
+                    color = if (line == BodyGuideLine.Chest) accent else neutral,
                 )
             }
 
@@ -113,7 +113,7 @@ internal fun BodyGuideOverlay(
                     style = Stroke(width = markerStroke * 2f),
                 )
                 drawCircle(
-                    color = amber,
+                    color = accent,
                     radius = markerRadius,
                     center = center,
                     style = Stroke(width = markerStroke),
@@ -200,12 +200,8 @@ private fun GuideLineHandle(
                 .align(Alignment.CenterStart)
                 .padding(start = 12.dp),
             shape = RoundedCornerShape(4.dp),
-            color = if (line == BodyGuideLine.Chest) {
-                Color(0xE6A56600)
-            } else {
-                Color(0xE6006F65)
-            },
-            contentColor = Color.White,
+            color = Color(0xE6000000),
+            contentColor = if (line == BodyGuideLine.Chest) ClinicalCyan else SoftWhite,
         ) {
             Text(
                 text = line.label,

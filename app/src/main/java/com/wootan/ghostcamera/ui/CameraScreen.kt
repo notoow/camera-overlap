@@ -67,7 +67,6 @@ import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
-import androidx.compose.material3.FilledIconButton
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -75,6 +74,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Slider
+import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -554,13 +554,13 @@ private fun CameraTopBar(
     Row(
         modifier = modifier
             .fillMaxWidth()
-            .background(Color(0x66000000))
+            .background(CameraChrome)
             .windowInsetsPadding(
                 WindowInsets.safeDrawing.only(
                     WindowInsetsSides.Top + WindowInsetsSides.Horizontal,
                 ),
             )
-            .padding(top = 8.dp, start = 8.dp, end = 8.dp, bottom = 10.dp),
+            .padding(horizontal = 4.dp, vertical = 4.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         CameraIconButton(
@@ -578,8 +578,8 @@ private fun CameraTopBar(
                     onClick = onAddReferences,
                     shape = RoundedCornerShape(6.dp),
                     colors = ButtonDefaults.filledTonalButtonColors(
-                        containerColor = PanelBlack,
-                        contentColor = SoftWhite,
+                        containerColor = SoftWhite,
+                        contentColor = CameraBlack,
                     ),
                     contentPadding = PaddingValues(horizontal = 14.dp, vertical = 10.dp),
                 ) {
@@ -680,8 +680,8 @@ private fun BodyGuideMenuButton(
                     contentDescription = null,
                     tint = when (mode) {
                         BodyGuideMode.Off -> SoftWhite
-                        BodyGuideMode.Locked -> GhostTeal
-                        BodyGuideMode.Editing -> CaptureAmber
+                        BodyGuideMode.Locked -> ClinicalCyan
+                        BodyGuideMode.Editing -> ClinicalCyan
                     },
                 )
             },
@@ -727,7 +727,7 @@ private fun BodyGuideMenuItems(
             )
         },
         trailingIcon = if (guideEnabled) {
-            { Icon(Icons.Outlined.Check, contentDescription = null, tint = GhostTeal) }
+            { Icon(Icons.Outlined.Check, contentDescription = null, tint = ClinicalCyan) }
         } else {
             null
         },
@@ -871,51 +871,53 @@ private fun ReferenceNavigator(
     onPrevious: () -> Unit,
     onNext: () -> Unit,
 ) {
-    Surface(
-        shape = RoundedCornerShape(6.dp),
-        color = PanelBlack,
-        contentColor = SoftWhite,
+    Row(
+        modifier = Modifier
+            .height(48.dp)
+            .pointerInput(selectedIndex, referenceCount) {
+                var totalDrag = 0f
+                detectHorizontalDragGestures(
+                    onDragStart = { totalDrag = 0f },
+                    onHorizontalDrag = { change, amount ->
+                        change.consume()
+                        totalDrag += amount
+                    },
+                    onDragEnd = {
+                        if (abs(totalDrag) >= 36f) {
+                            if (totalDrag > 0f && selectedIndex > 0) onPrevious()
+                            if (totalDrag < 0f && selectedIndex < referenceCount - 1) onNext()
+                        }
+                    },
+                )
+            },
+        verticalAlignment = Alignment.CenterVertically,
     ) {
-        Row(
-            modifier = Modifier
-                .height(48.dp)
-                .pointerInput(selectedIndex, referenceCount) {
-                    var totalDrag = 0f
-                    detectHorizontalDragGestures(
-                        onDragStart = { totalDrag = 0f },
-                        onHorizontalDrag = { change, amount ->
-                            change.consume()
-                            totalDrag += amount
-                        },
-                        onDragEnd = {
-                            if (abs(totalDrag) >= 36f) {
-                                if (totalDrag > 0f && selectedIndex > 0) onPrevious()
-                                if (totalDrag < 0f && selectedIndex < referenceCount - 1) onNext()
-                            }
-                        },
-                    )
-                },
-            verticalAlignment = Alignment.CenterVertically,
+        IconButton(
+            onClick = onPrevious,
+            enabled = selectedIndex > 0,
+            colors = IconButtonDefaults.iconButtonColors(
+                contentColor = SoftWhite,
+                disabledContentColor = SoftWhite.copy(alpha = 0.28f),
+            ),
         ) {
-            IconButton(
-                onClick = onPrevious,
-                enabled = selectedIndex > 0,
-            ) {
-                Icon(Icons.Outlined.ChevronLeft, contentDescription = "이전 기준 사진")
-            }
-            Text(
-                text = "${selectedIndex + 1} / $referenceCount",
-                modifier = Modifier.width(58.dp),
-                color = SoftWhite,
-                fontSize = 15.sp,
-                textAlign = androidx.compose.ui.text.style.TextAlign.Center,
-            )
-            IconButton(
-                onClick = onNext,
-                enabled = selectedIndex < referenceCount - 1,
-            ) {
-                Icon(Icons.Outlined.ChevronRight, contentDescription = "다음 기준 사진")
-            }
+            Icon(Icons.Outlined.ChevronLeft, contentDescription = "이전 기준 사진")
+        }
+        Text(
+            text = "${selectedIndex + 1} / $referenceCount",
+            modifier = Modifier.width(58.dp),
+            color = SoftWhite,
+            fontSize = 14.sp,
+            textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+        )
+        IconButton(
+            onClick = onNext,
+            enabled = selectedIndex < referenceCount - 1,
+            colors = IconButtonDefaults.iconButtonColors(
+                contentColor = SoftWhite,
+                disabledContentColor = SoftWhite.copy(alpha = 0.28f),
+            ),
+        ) {
+            Icon(Icons.Outlined.ChevronRight, contentDescription = "다음 기준 사진")
         }
     }
 }
@@ -939,22 +941,21 @@ private fun CameraBottomBar(
     Column(
         modifier = modifier
             .fillMaxWidth()
-            .background(Color(0x66000000))
+            .background(CameraChrome)
             .navigationBarsPadding()
-            .padding(start = 20.dp, end = 20.dp, top = 12.dp, bottom = 12.dp),
+            .padding(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 10.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         AnimatedVisibility(visible = hasReference) {
-            Surface(
+            Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .widthIn(max = 560.dp),
-                shape = RoundedCornerShape(6.dp),
-                color = PanelBlack,
-                contentColor = SoftWhite,
+                    .widthIn(max = 640.dp),
             ) {
                 Row(
-                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 5.dp),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(48.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     GhostScaleMenu(
@@ -967,23 +968,31 @@ private fun CameraBottomBar(
                         onValueChange = onGhostOpacityChange,
                         onValueChangeFinished = onGhostOpacityChangeFinished,
                         modifier = Modifier.weight(1f),
+                        colors = SliderDefaults.colors(
+                            thumbColor = SoftWhite,
+                            activeTrackColor = SoftWhite,
+                            inactiveTrackColor = SoftWhite.copy(alpha = 0.24f),
+                            activeTickColor = Color.Transparent,
+                            inactiveTickColor = Color.Transparent,
+                        ),
                     )
                     Text(
                         text = "${(ghostOpacity * 100).roundToInt()}%",
                         modifier = Modifier.width(48.dp),
                         textAlign = androidx.compose.ui.text.style.TextAlign.End,
                         fontSize = 13.sp,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        color = SoftWhite.copy(alpha = 0.72f),
                     )
                 }
+                HorizontalDivider(color = SoftWhite.copy(alpha = 0.16f))
             }
-            Spacer(Modifier.height(12.dp))
+            Spacer(Modifier.height(8.dp))
         }
 
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .widthIn(max = 560.dp),
+                .widthIn(max = 640.dp),
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically,
         ) {
@@ -1035,7 +1044,7 @@ private fun GhostScaleMenu(
             Icon(
                 imageVector = ghostScaleIcon(selectedMode),
                 contentDescription = null,
-                tint = GhostTeal,
+                tint = SoftWhite,
             )
         }
         DropdownMenu(
@@ -1079,7 +1088,7 @@ private fun ShutterButton(
     val shutterEnabled = cameraReady && !captureRunning
     Box(
         modifier = Modifier
-            .size(82.dp)
+            .size(78.dp)
             .semantics {
                 contentDescription = when {
                     cameraInitializationFailed -> "카메라를 사용할 수 없음"
@@ -1094,12 +1103,17 @@ private fun ShutterButton(
                 onClick = onClick,
             )
             .background(
-                color = Color.White.copy(alpha = if (cameraReady) 1f else 0.58f),
+                color = SoftWhite.copy(alpha = if (cameraReady) 1f else 0.5f),
                 shape = CircleShape,
             )
-            .padding(6.dp)
+            .padding(3.dp)
             .background(
-                color = CaptureAmber.copy(alpha = if (cameraReady) 1f else 0.58f),
+                color = CameraBlack.copy(alpha = if (cameraReady) 1f else 0.65f),
+                shape = CircleShape,
+            )
+            .padding(3.dp)
+            .background(
+                color = SoftWhite.copy(alpha = if (cameraReady) 1f else 0.5f),
                 shape = CircleShape,
             ),
         contentAlignment = Alignment.Center,
@@ -1109,12 +1123,12 @@ private fun ShutterButton(
                 imageVector = Icons.Outlined.NoPhotography,
                 contentDescription = null,
                 modifier = Modifier.size(30.dp),
-                tint = Color(0xFF2A1A00),
+                tint = CameraBlack,
             )
         } else if (captureRunning || !cameraReady) {
             CircularProgressIndicator(
                 modifier = Modifier.size(30.dp),
-                color = Color(0xFF2A1A00),
+                color = CameraBlack,
                 strokeWidth = 3.dp,
             )
         }
@@ -1127,15 +1141,14 @@ private fun CameraIconButton(
     contentDescription: String,
     onClick: () -> Unit,
 ) {
-    FilledIconButton(
+    IconButton(
         onClick = onClick,
         modifier = Modifier
             .size(48.dp)
             .semantics(mergeDescendants = true) {
                 this.contentDescription = contentDescription
             },
-        colors = IconButtonDefaults.filledIconButtonColors(
-            containerColor = PanelBlack,
+        colors = IconButtonDefaults.iconButtonColors(
             contentColor = SoftWhite,
         ),
     ) { icon() }
@@ -1212,7 +1225,7 @@ private fun BeforeAfterPreview(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .background(Color(0xFF111719))
+                .background(Color(0xFF0E0F0F))
                 .windowInsetsPadding(
                     WindowInsets.safeDrawing.only(
                         WindowInsetsSides.Top + WindowInsetsSides.Horizontal,
@@ -1248,13 +1261,13 @@ private fun BeforeAfterPreview(
                 when {
                     saveRunning -> CircularProgressIndicator(
                         modifier = Modifier.size(24.dp),
-                        color = GhostTeal,
+                        color = ClinicalCyan,
                         strokeWidth = 2.5.dp,
                     )
                     comparisonSaved -> Icon(
                         Icons.Outlined.CheckCircle,
                         contentDescription = null,
-                        tint = GhostTeal,
+                        tint = ClinicalCyan,
                     )
                     else -> Icon(
                         Icons.Outlined.SaveAlt,
@@ -1409,7 +1422,7 @@ private fun SingleCapturePreview(
             Icon(
                 Icons.Outlined.CheckCircle,
                 contentDescription = null,
-                tint = GhostTeal,
+                tint = ClinicalCyan,
             )
             Spacer(Modifier.width(8.dp))
             Text("갤러리에 저장됨", fontSize = 13.sp, color = SoftWhite)
@@ -1432,7 +1445,7 @@ private fun CameraPermissionScreen(onRequestPermission: () -> Unit) {
             imageVector = Icons.Outlined.PhotoLibrary,
             contentDescription = null,
             modifier = Modifier.size(64.dp),
-            tint = GhostTeal,
+            tint = ClinicalCyan,
         )
         Spacer(Modifier.height(20.dp))
         Text(

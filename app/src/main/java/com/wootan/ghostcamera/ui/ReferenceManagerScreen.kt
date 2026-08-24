@@ -16,7 +16,6 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.itemsIndexed
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.ArrowBack
@@ -26,11 +25,11 @@ import androidx.compose.material.icons.outlined.DeleteOutline
 import androidx.compose.material.icons.outlined.PhotoLibrary
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.ExtendedFloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -92,10 +91,19 @@ fun ReferenceManagerScreen(
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = Color(0xFF111719),
+                    containerColor = Color(0xFF0E0F0F),
                     navigationIconContentColor = SoftWhite,
                     titleContentColor = SoftWhite,
+                    actionIconContentColor = SoftWhite,
                 ),
+                actions = {
+                    IconButton(onClick = onAdd) {
+                        Icon(
+                            Icons.Outlined.AddPhotoAlternate,
+                            contentDescription = "기준 사진 추가",
+                        )
+                    }
+                },
             )
 
             if (references.isEmpty()) {
@@ -114,7 +122,7 @@ fun ReferenceManagerScreen(
                         .padding(horizontal = 12.dp),
                     contentPadding = androidx.compose.foundation.layout.PaddingValues(
                         top = 16.dp,
-                        bottom = 104.dp,
+                        bottom = 16.dp,
                     ),
                     horizontalArrangement = Arrangement.spacedBy(10.dp),
                     verticalArrangement = Arrangement.spacedBy(10.dp),
@@ -138,22 +146,6 @@ fun ReferenceManagerScreen(
             }
         }
 
-        if (references.isNotEmpty()) {
-            ExtendedFloatingActionButton(
-                onClick = onAdd,
-                modifier = Modifier
-                    .align(Alignment.BottomEnd)
-                    .navigationBarsPadding()
-                    .padding(24.dp),
-                containerColor = GhostTeal,
-                contentColor = Color(0xFF00201C),
-                icon = {
-                    Icon(Icons.Outlined.AddPhotoAlternate, contentDescription = null)
-                },
-                text = { Text("사진 추가") },
-            )
-        }
-
         if (loading) {
             Box(
                 modifier = Modifier
@@ -161,7 +153,7 @@ fun ReferenceManagerScreen(
                     .background(Color(0x99000000)),
                 contentAlignment = Alignment.Center,
             ) {
-                CircularProgressIndicator(color = GhostTeal)
+                CircularProgressIndicator(color = ClinicalCyan)
             }
         }
     }
@@ -209,7 +201,14 @@ private fun EmptyReferenceState(
             color = SoftWhite,
         )
         Spacer(Modifier.height(18.dp))
-        Button(onClick = onAdd) {
+        Button(
+            onClick = onAdd,
+            shape = RoundedCornerShape(4.dp),
+            colors = ButtonDefaults.buttonColors(
+                containerColor = SoftWhite,
+                contentColor = CameraBlack,
+            ),
+        ) {
             Icon(Icons.Outlined.AddPhotoAlternate, contentDescription = null)
             Spacer(Modifier.size(8.dp))
             Text("사진 추가")
@@ -232,9 +231,9 @@ private fun ReferenceTile(
         onClick = onClick,
         modifier = Modifier
             .fillMaxWidth(),
-        shape = RoundedCornerShape(6.dp),
+        shape = RoundedCornerShape(4.dp),
         colors = CardDefaults.cardColors(
-            containerColor = Color(0xFF171D1F),
+            containerColor = Color(0xFF151616),
             contentColor = SoftWhite,
         ),
     ) {
@@ -254,7 +253,7 @@ private fun ReferenceTile(
                     modifier = Modifier
                         .align(Alignment.TopStart)
                         .padding(8.dp),
-                    shape = CircleShape,
+                    shape = RoundedCornerShape(3.dp),
                     color = Color(0xD9000000),
                 ) {
                     Text(
@@ -268,7 +267,7 @@ private fun ReferenceTile(
                     modifier = Modifier
                         .align(Alignment.TopEnd)
                         .padding(4.dp)
-                        .background(Color(0xB3000000), CircleShape),
+                        .background(Color(0xB3000000), RoundedCornerShape(4.dp)),
                 ) {
                     Icon(
                         Icons.Outlined.DeleteOutline,
