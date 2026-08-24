@@ -5,23 +5,23 @@ import androidx.compose.material3.darkColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.Color
 
-val GhostTeal = Color(0xFF2ED6C2)
-val CaptureAmber = Color(0xFFFFC04A)
-val CameraBlack = Color(0xFF07090A)
-val PanelBlack = Color(0xE614191B)
-val SoftWhite = Color(0xFFF4F7F7)
+val ClinicalCyan = Color(0xFFA9DDE0)
+val CameraBlack = Color(0xFF050505)
+val CameraChrome = Color(0xE6000000)
+val SoftWhite = Color(0xFFF5F7F7)
 
 private val GhostCameraColors = darkColorScheme(
-    primary = GhostTeal,
-    onPrimary = Color(0xFF00201C),
-    secondary = CaptureAmber,
-    onSecondary = Color(0xFF2A1A00),
+    primary = ClinicalCyan,
+    onPrimary = Color(0xFF102123),
+    secondary = Color(0xFFD5DADA),
+    onSecondary = Color(0xFF1A1C1C),
     background = CameraBlack,
     onBackground = SoftWhite,
-    surface = Color(0xFF14191B),
+    surface = Color(0xFF121313),
     onSurface = SoftWhite,
-    surfaceVariant = Color(0xFF283033),
-    onSurfaceVariant = Color(0xFFD7E0E0),
+    surfaceVariant = Color(0xFF292B2B),
+    onSurfaceVariant = Color(0xFFBDC2C2),
+    outline = Color(0xFF666A6A),
     error = Color(0xFFFFB4AB),
 )
 

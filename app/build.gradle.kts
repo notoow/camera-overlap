@@ -12,8 +12,8 @@ android {
         applicationId = "com.wootan.ghostcamera"
         minSdk = 26
         targetSdk = 35
-        versionCode = 1
-        versionName = "0.1.0-beta"
+        versionCode = 7
+        versionName = "0.6.0-beta"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables.useSupportLibrary = true
@@ -68,6 +68,8 @@ dependencies {
     implementation("androidx.camera:camera-core:$cameraXVersion")
     implementation("androidx.camera:camera-lifecycle:$cameraXVersion")
     implementation("androidx.camera:camera-view:$cameraXVersion")
+
+    implementation("androidx.exifinterface:exifinterface:1.3.7")
 
     implementation("io.coil-kt:coil-compose:2.7.0")
 
